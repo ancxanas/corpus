@@ -17,6 +17,7 @@ export interface Config {
   replay: "stub" | "sandbox";
   sandboxCmd: string | undefined;
   maxBodyBytes: number;
+  corsOrigins: string[];
 }
 
 function parsePort(raw: string | undefined): number {
@@ -27,6 +28,13 @@ function parsePort(raw: string | undefined): number {
     );
   }
   return port;
+}
+
+function parseOrigins(raw: string | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+  return raw.split(",").map((origin) => origin.trim()).filter(Boolean);
 }
 
 export function loadConfig(
@@ -51,5 +59,6 @@ export function loadConfig(
     replay,
     sandboxCmd: env.CORPUS_SANDBOX_CMD,
     maxBodyBytes: Number(env.CORPUS_MAX_BODY_BYTES) || 1_048_576,
+    corsOrigins: parseOrigins(env.CORPUS_CORS_ORIGINS),
   };
 }

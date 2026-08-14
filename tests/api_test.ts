@@ -368,6 +368,118 @@ Deno.test("POST /nodes over the body limit returns 413", async () => {
   await Deno.remove(dir, { recursive: true });
 });
 
+Deno.test("OPTIONS preflight succeeds for an allowed origin", async () => {
+  const { ingest, index, dir } = await makeServer();
+  const cors = createApp(ingest, index, {
+    corsOrigins: ["https://app.example"],
+    logger: () => {},
+  });
+  const res = await req(cors, "/nodes", {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://app.example",
+      "Access-Control-Request-Method": "POST",
+    },
+  });
+  assertEquals(res.status, 204);
+  assertEquals(
+    res.headers.get("access-control-allow-origin"),
+    "https://app.example",
+  );
+  assertEquals(
+    res.headers.get("access-control-allow-methods"),
+    "GET, POST, HEAD, OPTIONS",
+  );
+  assertEquals(
+    res.headers.get("access-control-allow-headers"),
+    "Content-Type, Accept",
+  );
+  assertEquals(res.headers.get("access-control-max-age"), "600");
+  assertEquals(await res.text(), "");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("OPTIONS preflight from a disallowed origin gets no CORS headers", async () => {
+  const { ingest, index, dir } = await makeServer();
+  const cors = createApp(ingest, index, {
+    corsOrigins: ["https://app.example"],
+    logger: () => {},
+  });
+  const res = await req(cors, "/nodes", {
+    method: "OPTIONS",
+    headers: { Origin: "https://evil.example" },
+  });
+  assertEquals(res.headers.get("access-control-allow-origin"), null);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET from an allowed origin echoes Access-Control-Allow-Origin", async () => {
+  const { ingest, index, dir } = await makeServer();
+  const cors = createApp(ingest, index, {
+    corsOrigins: ["https://app.example"],
+    logger: () => {},
+  });
+  const res = await req(cors, "/", {
+    headers: { Origin: "https://app.example" },
+  });
+  assertEquals(res.status, 200);
+  assertEquals(
+    res.headers.get("access-control-allow-origin"),
+    "https://app.example",
+  );
+  assertEquals(res.headers.get("vary"), "Origin");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET from a disallowed origin gets no CORS headers", async () => {
+  const { ingest, index, dir } = await makeServer();
+  const cors = createApp(ingest, index, {
+    corsOrigins: ["https://app.example"],
+    logger: () => {},
+  });
+  const res = await req(cors, "/", {
+    headers: { Origin: "https://evil.example" },
+  });
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("access-control-allow-origin"), null);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("wildcard CORS echoes any origin", async () => {
+  const { ingest, index, dir } = await makeServer();
+  const cors = createApp(ingest, index, {
+    corsOrigins: ["*"],
+    logger: () => {},
+  });
+  const res = await req(cors, "/", {
+    headers: { Origin: "https://any.example" },
+  });
+  assertEquals(
+    res.headers.get("access-control-allow-origin"),
+    "https://any.example",
+  );
+  const preflight = await req(cors, "/nodes", {
+    method: "OPTIONS",
+    headers: { Origin: "https://any.example" },
+  });
+  assertEquals(preflight.status, 204);
+  assertEquals(
+    preflight.headers.get("access-control-allow-origin"),
+    "https://any.example",
+  );
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("no CORS config leaves responses unchanged", async () => {
+  const { ingest, index, dir } = await makeServer();
+  const plain = createApp(ingest, index, { logger: () => {} });
+  const res = await req(plain, "/", {
+    headers: { Origin: "https://app.example" },
+  });
+  assertEquals(res.headers.get("access-control-allow-origin"), null);
+  await Deno.remove(dir, { recursive: true });
+});
+
 Deno.test("HEAD / returns headers without a body", async () => {
   const { handler, dir } = await makeServer();
   const res = await req(handler, "/", { method: "HEAD" });

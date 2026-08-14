@@ -70,6 +70,7 @@ function entryPoint(baseUrl: string): Record<string, unknown> {
 export interface CreateAppOptions {
   bodyLimit?: number;
   baseUrl?: string | null;
+  corsOrigins?: string[];
   logger?: (line: string) => void;
 }
 
@@ -81,11 +82,54 @@ export function createApp(
   const bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT;
   const logger = options.logger ?? ((line: string) => console.log(line));
   const baseUrlOption = options.baseUrl ?? null;
+  const corsOrigins = options.corsOrigins ?? [];
+  const allowAllOrigins = corsOrigins.includes("*");
+
+  function allowedOrigin(request: Request): string | null {
+    const origin = request.headers.get("origin");
+    if (origin === null) {
+      return null;
+    }
+    if (allowAllOrigins) {
+      return origin;
+    }
+    return corsOrigins.includes(origin) ? origin : null;
+  }
+
+  function withCorsHeaders(response: Response, request: Request): Response {
+    const origin = allowedOrigin(request);
+    if (origin === null) {
+      return response;
+    }
+    const headers = new Headers(response.headers);
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.append("Vary", "Origin");
+    return new Response(response.body, { status: response.status, headers });
+  }
+
+  function preflightResponse(origin: string): Response {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Methods": "GET, POST, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Accept",
+        "Access-Control-Max-Age": "600",
+        "Vary": "Origin",
+      },
+    });
+  }
 
   return async function handler(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const requestId = crypto.randomUUID();
     const started = performance.now();
+    if (request.method === "OPTIONS") {
+      const origin = allowedOrigin(request);
+      if (origin !== null) {
+        return preflightResponse(origin);
+      }
+    }
     const isHead = request.method === "HEAD";
     const response = await route(
       request,
@@ -105,7 +149,11 @@ export function createApp(
     );
     const headers = new Headers(finished.headers);
     headers.set("X-Request-Id", requestId);
-    return new Response(finished.body, { status: finished.status, headers });
+    const final = new Response(finished.body, {
+      status: finished.status,
+      headers,
+    });
+    return withCorsHeaders(final, request);
   };
 
   async function route(
@@ -604,6 +652,7 @@ export interface StartServerOptions {
   hostname?: string;
   bodyLimit?: number;
   baseUrl?: string | null;
+  corsOrigins?: string[];
 }
 
 export function startServer(
@@ -614,6 +663,7 @@ export function startServer(
   const handler = createApp(ingest, index, {
     bodyLimit: options.bodyLimit,
     baseUrl: options.baseUrl,
+    corsOrigins: options.corsOrigins,
   });
   let resolveAddr: (info: { hostname: string; port: number }) => void =
     () => {};

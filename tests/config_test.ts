@@ -10,6 +10,7 @@ const BASE_ENV: Record<string, string> = {
   CORPUS_REPLAY: "sandbox",
   CORPUS_SANDBOX_CMD: "/bin/true --flag",
   CORPUS_MAX_BODY_BYTES: "2048",
+  CORPUS_CORS_ORIGINS: "https://a.example, https://b.example",
 };
 
 function env(
@@ -31,6 +32,7 @@ Deno.test("loadConfig reads every variable", () => {
   assertEquals(c.replay, "sandbox");
   assertEquals(c.sandboxCmd, "/bin/true --flag");
   assertEquals(c.maxBodyBytes, 2048);
+  assertEquals(c.corsOrigins, ["https://a.example", "https://b.example"]);
 });
 
 Deno.test("loadConfig applies defaults", () => {
@@ -44,6 +46,17 @@ Deno.test("loadConfig applies defaults", () => {
   assertEquals(c.replay, "stub");
   assertEquals(c.sandboxCmd, undefined);
   assertEquals(c.maxBodyBytes, 1_048_576);
+  assertEquals(c.corsOrigins, []);
+});
+
+Deno.test("loadConfig parses a wildcard origin", () => {
+  const c = loadConfig(env({ CORPUS_CORS_ORIGINS: "*" }));
+  assertEquals(c.corsOrigins, ["*"]);
+});
+
+Deno.test("loadConfig drops empty origin entries", () => {
+  const c = loadConfig(env({ CORPUS_CORS_ORIGINS: "https://a.example, , ," }));
+  assertEquals(c.corsOrigins, ["https://a.example"]);
 });
 
 Deno.test("loadConfig rejects a non-numeric PORT", () => {

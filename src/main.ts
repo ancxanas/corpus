@@ -68,6 +68,7 @@ const server = startServer(ingest, index, {
   hostname: config.host,
   baseUrl: config.baseUrl,
   bodyLimit: config.maxBodyBytes,
+  corsOrigins: config.corsOrigins,
 });
 const bound = await server.listening;
 const boundUrl = config.baseUrl ?? `http://${bound.hostname}:${bound.port}`;
