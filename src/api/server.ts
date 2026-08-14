@@ -215,6 +215,7 @@ function entryPoint(baseUrl: string): Record<string, unknown> {
 
 export interface CreateAppOptions {
   bodyLimit?: number;
+  baseUrl?: string | null;
   logger?: (line: string) => void;
 }
 
@@ -223,9 +224,9 @@ export function createApp(
   index: QueryIndex,
   options: CreateAppOptions = {},
 ) {
-  const bodyLimit = options.bodyLimit ??
-    (Number(Deno.env.get("CORPUS_MAX_BODY_BYTES")) || DEFAULT_BODY_LIMIT);
+  const bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT;
   const logger = options.logger ?? ((line: string) => console.log(line));
+  const baseUrlOption = options.baseUrl ?? null;
 
   return async function handler(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -262,10 +263,7 @@ export function createApp(
     if (!acceptsJsonApi(request)) {
       return notAcceptable();
     }
-    const baseUrl = (Deno.env.get("CORPUS_BASE_URL") ?? url.origin).replace(
-      /\/+$/,
-      "",
-    );
+    const baseUrl = (baseUrlOption ?? url.origin).replace(/\/+$/, "");
     const segments = url.pathname.split("/").filter(Boolean);
 
     try {
@@ -750,6 +748,8 @@ export function createApp(
 export interface StartServerOptions {
   port?: number;
   hostname?: string;
+  bodyLimit?: number;
+  baseUrl?: string | null;
 }
 
 export function startServer(
@@ -757,7 +757,10 @@ export function startServer(
   index: QueryIndex,
   options: StartServerOptions = {},
 ) {
-  const handler = createApp(ingest, index);
+  const handler = createApp(ingest, index, {
+    bodyLimit: options.bodyLimit,
+    baseUrl: options.baseUrl,
+  });
   let resolveAddr: (info: { hostname: string; port: number }) => void =
     () => {};
   const listening = new Promise<{ hostname: string; port: number }>(

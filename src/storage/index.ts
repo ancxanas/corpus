@@ -113,6 +113,7 @@ export class SqliteQueryIndex implements QueryIndex {
     this.#db.exec("DROP TABLE IF EXISTS nodes");
     this.#db.exec("DROP TABLE IF EXISTS verifications");
     this.#db.exec("DROP TABLE IF EXISTS deprecation_triggers");
+    this.#db.exec("PRAGMA user_version = 0");
     await migrate(this.#db);
   }
 
@@ -206,6 +207,10 @@ export class SqliteQueryIndex implements QueryIndex {
     return indexed;
   }
 
+  // Async to match the QueryIndex contract. The SQLite driver is synchronous,
+  // so awaits must stay out of the BEGIN/COMMIT block: a concurrent caller on
+  // the shared connection would otherwise interleave inside the transaction.
+  // deno-lint-ignore require-await
   async addVerification(
     receipt: Node,
     cid: string,
@@ -252,7 +257,7 @@ export class SqliteQueryIndex implements QueryIndex {
         verification.execution.test_suite.failed,
       );
 
-      const receipts = await this.#receiptsFor(solutionCid);
+      const receipts = this.#receiptsFor(solutionCid);
       const confidence = computeConfidence(receipts);
       const latest = receipts.reduce(
         (a, b) => (Date.parse(a.timestamp) > Date.parse(b.timestamp) ? a : b),

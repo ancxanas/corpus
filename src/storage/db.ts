@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 
-const SCHEMA = `
+const SCHEMA_V1 = `
 CREATE TABLE IF NOT EXISTS nodes (
   cid TEXT PRIMARY KEY,
   node_id TEXT NOT NULL,
@@ -51,7 +51,27 @@ CREATE INDEX IF NOT EXISTS idx_nodes_confidence ON nodes(confidence_score);
 CREATE INDEX IF NOT EXISTS idx_verif_solution ON verifications(solution_cid);
 `;
 
+const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
+  (db) => {
+    db.exec(SCHEMA_V1);
+  },
+];
+
 export function migrate(db: DatabaseSync): void {
   db.exec("PRAGMA journal_mode = WAL;");
-  db.exec(SCHEMA);
+  let version = (db.prepare("PRAGMA user_version").get() as {
+    user_version: number;
+  }).user_version;
+  while (version < MIGRATIONS.length) {
+    db.exec("BEGIN IMMEDIATE;");
+    try {
+      MIGRATIONS[version]!(db);
+      version += 1;
+      db.exec(`PRAGMA user_version = ${version}`);
+      db.exec("COMMIT;");
+    } catch (e) {
+      db.exec("ROLLBACK;");
+      throw e;
+    }
+  }
 }

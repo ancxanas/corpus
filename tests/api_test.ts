@@ -401,16 +401,25 @@ Deno.test("responses carry X-Request-Id and the logger sees one line", async () 
   await Deno.remove(dir, { recursive: true });
 });
 
-Deno.test("CORPUS_BASE_URL overrides self links", async () => {
-  const { handler, dir } = await makeServer();
-  Deno.env.set("CORPUS_BASE_URL", "https://corpus.example");
+Deno.test("baseUrl option overrides self links", async () => {
+  const dir = tempDir();
+  const index = new SqliteQueryIndex(`${dir}/index.db`);
+  await index.init();
+  const ingest = new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    index,
+  );
+  const handler = createApp(ingest, index, {
+    baseUrl: "https://corpus.example",
+    logger: () => {},
+  });
   try {
     const res = await req(handler, "/");
     const body = await res.json();
     assertEquals(body.links.self, "https://corpus.example");
     assertEquals(body.links.problems, "https://corpus.example/problems");
   } finally {
-    Deno.env.delete("CORPUS_BASE_URL");
+    await index.close();
   }
   await Deno.remove(dir, { recursive: true });
 });
