@@ -59,6 +59,7 @@ const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
 
 export function migrate(db: DatabaseSync): void {
   db.exec("PRAGMA journal_mode = WAL;");
+  db.exec("PRAGMA busy_timeout = 5000;");
   let version = (db.prepare("PRAGMA user_version").get() as {
     user_version: number;
   }).user_version;

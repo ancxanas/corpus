@@ -22,22 +22,29 @@ export function loadPins(path: string | undefined): VersionPin {
 }
 
 export function cachedVersionPins(path: string | undefined): () => VersionPin {
-  let cached: { pins: VersionPin; mtimeMs: number | null } | null = null;
+  let cached: {
+    pins: VersionPin;
+    mtimeMs: number | null;
+    size: number | null;
+  } | null = null;
   return () => {
     if (!path) {
       return {};
     }
     let mtimeMs: number | null = null;
+    let size: number | null = null;
     try {
-      mtimeMs = Deno.statSync(path).mtime?.getTime() ?? null;
+      const stat = Deno.statSync(path);
+      mtimeMs = stat.mtime?.getTime() ?? null;
+      size = stat.size;
     } catch {
       // file missing or unreadable; reload below to recover when it returns
     }
-    if (cached !== null && cached.mtimeMs === mtimeMs) {
+    if (cached !== null && cached.mtimeMs === mtimeMs && cached.size === size) {
       return cached.pins;
     }
     const pins = loadPins(path);
-    cached = { pins, mtimeMs };
+    cached = { pins, mtimeMs, size };
     return pins;
   };
 }

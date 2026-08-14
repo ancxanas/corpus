@@ -23,6 +23,14 @@ function isUniqueViolation(e: unknown): boolean {
   return e instanceof Error && /UNIQUE constraint failed/i.test(e.message);
 }
 
+function rollbackQuietly(db: DatabaseSync): void {
+  try {
+    db.exec("ROLLBACK;");
+  } catch {
+    // no active transaction (e.g., BEGIN failed): keep the original error
+  }
+}
+
 export interface QueryIndex {
   init(): Promise<void>;
   reset(): Promise<void>;
@@ -190,7 +198,7 @@ export class SqliteQueryIndex implements QueryIndex {
       this.#indexTriggers(node, cid);
       db.exec("COMMIT;");
     } catch (e) {
-      db.exec("ROLLBACK;");
+      rollbackQuietly(db);
       if (isUniqueViolation(e)) {
         const existing = await this.getNode(cid);
         if (existing) {
@@ -279,7 +287,7 @@ export class SqliteQueryIndex implements QueryIndex {
 
       db.exec("COMMIT;");
     } catch (e) {
-      db.exec("ROLLBACK;");
+      rollbackQuietly(db);
       if (isUniqueViolation(e)) {
         return;
       }
@@ -385,6 +393,9 @@ export class SqliteQueryIndex implements QueryIndex {
     return issues;
   }
 
+  // Recomputes and persists the effective status on read. The stored column
+  // backs search filters, so writes must follow the read. The Postgres port
+  // should revisit this write-on-read tradeoff.
   #refreshEffectiveStatus(indexed: IndexedNode, now: string): IndexedNode {
     if (indexed.node_type !== "Recipe") {
       return indexed;
