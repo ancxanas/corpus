@@ -3,12 +3,12 @@ import { FileBlockstore } from "./storage/blockstore.ts";
 import { IngestService } from "./storage/ingest.ts";
 import { startServer } from "./api/server.ts";
 import { type Config, ConfigError, loadConfig } from "./config.ts";
-import { type EnvSpec, PlaygroundRegistry } from "./verify/registry.ts";
+import { type EnvSpec, PlaygroundRegistry } from "./execution/registry.ts";
 import {
   type ReplayExecutor,
   SandboxReplayExecutor,
   StubReplayExecutor,
-} from "./verify/replay.ts";
+} from "./execution/replay.ts";
 import { cachedVersionPins } from "./storage/triggers.ts";
 
 function fail(message: string): never {

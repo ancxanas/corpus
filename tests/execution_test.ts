@@ -7,13 +7,13 @@ import {
   ValidationError,
 } from "../src/storage/ingest.ts";
 import { generateKeyPair } from "../src/core/sign.ts";
-import { PlaygroundRegistry } from "../src/verify/registry.ts";
+import { PlaygroundRegistry } from "../src/execution/registry.ts";
 import {
   type ReplayExecutor,
   type ReplayResult,
   SandboxReplayExecutor,
   StubReplayExecutor,
-} from "../src/verify/replay.ts";
+} from "../src/execution/replay.ts";
 import {
   computeConfidence,
   computeEffectiveStatus,

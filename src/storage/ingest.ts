@@ -10,12 +10,12 @@ import { isVerification } from "../nodetypes/registry.ts";
 import type { Blockstore } from "./blockstore.ts";
 import type { QueryIndex } from "./index.ts";
 import type { IndexedNode } from "./types.ts";
-import type { PlaygroundRegistry } from "../verify/registry.ts";
+import type { PlaygroundRegistry } from "../execution/registry.ts";
 import {
   type ReplayExecutor,
   type ReplayResult,
   StubReplayExecutor,
-} from "../verify/replay.ts";
+} from "../execution/replay.ts";
 
 export class ValidationError extends Error {
   issues: ValidationIssue[];
