@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1.0.19",
+    "@ipld/dag-json": "npm:@ipld/dag-json@11.0.1",
+    "multiformats": "npm:multiformats@14.0.5",
+    "ajv": "npm:ajv@8.20.0"
+  },
+  "tasks": {
+    "test": "deno test --allow-read --allow-env --allow-write --allow-net --allow-run",
+    "cov": "deno test --allow-read --allow-env --allow-write --allow-net --allow-run --coverage=coverage --clean",
+    "cov:report": "deno coverage coverage/ --exclude=node_modules --exclude=deno_modules",
+    "start": "deno run --allow-net --allow-read --allow-write --allow-env src/main.ts",
+    "cli": "deno run --allow-net --allow-read --allow-write --allow-env src/cli/main.ts"
+  }
+}
