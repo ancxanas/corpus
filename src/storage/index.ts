@@ -1,0 +1,390 @@
+import { DatabaseSync } from "node:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { migrate } from "./db.ts";
+import { computeConfidence, computeEffectiveStatus } from "./status.ts";
+import { canonicalString } from "../core/serialize.ts";
+import type { EffectiveStatus, Node, NodeType } from "../core/types.ts";
+import type {
+  IndexedNode,
+  IndexedVerification,
+  SearchOptions,
+  SearchResult,
+} from "./types.ts";
+
+export interface QueryIndex {
+  init(): void;
+  indexNode(node: Node, cid: string, createdAt: string): IndexedNode;
+  addVerification(receipt: Node, cid: string, createdAt: string): void;
+  getNode(cid: string): IndexedNode | null;
+  getHeadVersion(nodeId: string): IndexedNode[];
+  getVersions(nodeId: string): IndexedNode[];
+  getReceiptsFor(solutionCid: string): IndexedVerification[];
+  hasVerification(cid: string): boolean;
+  precheckVerification(receipt: Node): { pointer: string; message: string }[];
+  search(options: SearchOptions): SearchResult;
+  close(): void;
+}
+
+const SORT_COLUMNS: Record<string, string> = {
+  last_verified: "last_verified",
+  created_at: "created_at",
+  confidence_score: "confidence_score",
+};
+
+function extractMeta(node: Node): { severity: string | null; framework_name: string | null } {
+  if (node.osk.node_type === "Problem") {
+    const problem = (node.payload as { problem: { severity: string; environment: { framework: { name: string } } } }).problem;
+    return {
+      severity: problem.severity,
+      framework_name: problem.environment.framework.name,
+    };
+  }
+  return { severity: null, framework_name: null };
+}
+
+function rowToIndexedNode(row: Record<string, unknown>): IndexedNode {
+  const node = JSON.parse(row.node_json as string) as Node;
+  return {
+    cid: row.cid as string,
+    node_id: row.node_id as string,
+    node_type: row.node_type as NodeType,
+    version_seq: row.version_seq as number,
+    supersedes_cid: row.supersedes_cid as string | null,
+    author_public_key: row.author_public_key as string,
+    author_declared_status: row.author_declared_status as string,
+    effective_status: row.effective_status as EffectiveStatus,
+    confidence_score: row.confidence_score as number,
+    last_verified: row.last_verified as string,
+    severity: row.severity as string | null,
+    framework_name: row.framework_name as string | null,
+    created_at: row.created_at as string,
+    head: (row.head as number) === 1,
+    node,
+  };
+}
+
+export class SqliteQueryIndex implements QueryIndex {
+  #db: DatabaseSync;
+  #closed = false;
+
+  constructor(path: string) {
+    mkdirSync(dirname(path), { recursive: true });
+    this.#db = new DatabaseSync(path);
+  }
+
+  init(): void {
+    migrate(this.#db);
+  }
+
+  indexNode(node: Node, cid: string, createdAt: string): IndexedNode {
+    const nodeId = node.osk.node_id;
+    const meta = extractMeta(node);
+    const supersededCid = node.osk.supersedes_cid?.["/"] ?? null;
+
+    const db = this.#db;
+    db.exec("BEGIN IMMEDIATE;");
+    try {
+      let versionSeq = 1;
+      if (supersededCid) {
+        const prev = db.prepare("SELECT version_seq FROM nodes WHERE cid = ?").get(supersededCid) as
+          | { version_seq: number }
+          | undefined;
+        versionSeq = prev ? prev.version_seq + 1 : 1;
+      }
+
+      const effective = computeEffectiveStatus(node, {
+        latestReceipt: null,
+        triggerFired: false,
+        now: createdAt,
+      });
+
+      db.prepare(
+        `INSERT INTO nodes (cid, node_id, node_type, version_seq, supersedes_cid, author_public_key,
+           author_declared_status, effective_status, confidence_score, last_verified,
+           severity, framework_name, created_at, head, node_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        cid,
+        nodeId,
+        node.osk.node_type,
+        versionSeq,
+        supersededCid,
+        node.osk.attribution.public_key,
+        node.osk.knowledge_lifecycle.status,
+        effective,
+        0.0,
+        node.osk.knowledge_lifecycle.last_verified,
+        meta.severity,
+        meta.framework_name,
+        createdAt,
+        0,
+        canonicalString(node),
+      );
+
+      this.#recomputeHeads(nodeId);
+      const headCount = (db.prepare(
+        "SELECT COUNT(*) AS n FROM nodes WHERE node_id = ? AND head = 1",
+      ).get(nodeId) as { n: number }).n;
+      if (headCount > 1) {
+        db.prepare(
+          "UPDATE nodes SET effective_status = 'disputed' WHERE node_id = ? AND head = 1",
+        ).run(nodeId);
+      }
+      this.#indexTriggers(node, cid);
+      db.exec("COMMIT;");
+    } catch (e) {
+      db.exec("ROLLBACK;");
+      throw e;
+    }
+
+    const indexed = this.getNode(cid);
+    if (!indexed) {
+      throw new Error("indexed node disappeared");
+    }
+    return indexed;
+  }
+
+  addVerification(receipt: Node, cid: string, createdAt: string): void {
+    const verification = (receipt.payload as { verification: {
+      target: { problem_id: { "/": string }; solution_id: { "/": string } };
+      execution: { environment_hash: string; test_suite: { total: number; passed: number; failed: number } };
+      timestamp: string;
+      valid_until?: string;
+    } }).verification;
+    const solutionCid = verification.target.solution_id["/"];
+    const problemCid = verification.target.problem_id["/"];
+
+    const db = this.#db;
+    db.exec("BEGIN IMMEDIATE;");
+    try {
+      const solution = db.prepare("SELECT author_public_key FROM nodes WHERE cid = ?").get(solutionCid) as
+        | { author_public_key: string }
+        | undefined;
+      if (!solution) {
+        throw new Error("target solution does not exist in index");
+      }
+      if (solution.author_public_key === receipt.osk.attribution.public_key) {
+        throw new Error("verifier must not verify their own solution");
+      }
+
+      db.prepare(
+        `INSERT INTO verifications (receipt_cid, problem_cid, solution_cid, environment_hash,
+           public_key, timestamp, valid_until, total, passed, failed)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        cid,
+        problemCid,
+        solutionCid,
+        verification.execution.environment_hash,
+        receipt.osk.attribution.public_key,
+        verification.timestamp,
+        verification.valid_until ?? null,
+        verification.execution.test_suite.total,
+        verification.execution.test_suite.passed,
+        verification.execution.test_suite.failed,
+      );
+
+      const receipts = this.#receiptsFor(solutionCid);
+      const confidence = computeConfidence(receipts);
+      const latest = receipts.reduce(
+        (a, b) => (Date.parse(a.timestamp) > Date.parse(b.timestamp) ? a : b),
+        receipts[0]!,
+      );
+      const nodeJson = (db.prepare("SELECT node_json FROM nodes WHERE cid = ?").get(solutionCid) as
+        | { node_json: string }).node_json;
+      const recipeNode = JSON.parse(nodeJson) as Node;
+      const effective = computeEffectiveStatus(recipeNode, {
+        latestReceipt: latest,
+        triggerFired: false,
+        now: createdAt,
+      });
+      db.prepare(
+        "UPDATE nodes SET confidence_score = ?, effective_status = ? WHERE cid = ?",
+      ).run(confidence, effective, solutionCid);
+
+      db.exec("COMMIT;");
+    } catch (e) {
+      db.exec("ROLLBACK;");
+      throw e;
+    }
+  }
+
+  getNode(cid: string): IndexedNode | null {
+    const row = this.#db.prepare("SELECT * FROM nodes WHERE cid = ?").get(cid) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) {
+      return null;
+    }
+    return this.#refreshEffectiveStatus(rowToIndexedNode(row), new Date().toISOString());
+  }
+
+  getHeadVersion(nodeId: string): IndexedNode[] {
+    const rows = this.#db.prepare(
+      "SELECT * FROM nodes WHERE node_id = ? AND head = 1 ORDER BY created_at DESC",
+    ).all(nodeId) as Record<string, unknown>[];
+    const now = new Date().toISOString();
+    return rows.map((row) => this.#refreshEffectiveStatus(rowToIndexedNode(row), now));
+  }
+
+  getVersions(nodeId: string): IndexedNode[] {
+    const rows = this.#db.prepare(
+      "SELECT * FROM nodes WHERE node_id = ? ORDER BY version_seq DESC",
+    ).all(nodeId) as Record<string, unknown>[];
+    const now = new Date().toISOString();
+    return rows.map((row) => this.#refreshEffectiveStatus(rowToIndexedNode(row), now));
+  }
+
+  getReceiptsFor(solutionCid: string): IndexedVerification[] {
+    return this.#receiptsFor(solutionCid);
+  }
+
+  hasVerification(cid: string): boolean {
+    return this.#db.prepare("SELECT 1 AS one FROM verifications WHERE receipt_cid = ?").get(cid) !== undefined;
+  }
+
+  precheckVerification(receipt: Node): { pointer: string; message: string }[] {
+    const verification = (receipt.payload as { verification: {
+      target: { problem_id: { "/": string }; solution_id: { "/": string } };
+    } }).verification;
+    const solutionCid = verification.target.solution_id["/"];
+    const problemCid = verification.target.problem_id["/"];
+    const issues: { pointer: string; message: string }[] = [];
+
+    const solution = this.#db.prepare(
+      "SELECT author_public_key, node_type FROM nodes WHERE cid = ?",
+    ).get(solutionCid) as { author_public_key: string; node_type: string } | undefined;
+    if (!solution) {
+      issues.push({
+        pointer: "/payload/verification/target/solution_id",
+        message: "target solution does not exist in the index",
+      });
+    } else if (solution.node_type !== "Recipe") {
+      issues.push({
+        pointer: "/payload/verification/target/solution_id",
+        message: "target solution must be a Recipe node",
+      });
+    }
+
+    const problem = this.#db.prepare("SELECT cid FROM nodes WHERE cid = ?").get(problemCid);
+    if (!problem) {
+      issues.push({
+        pointer: "/payload/verification/target/problem_id",
+        message: "target problem does not exist in the index",
+      });
+    }
+
+    if (solution && solution.author_public_key === receipt.osk.attribution.public_key) {
+      issues.push({
+        pointer: "/osk/attribution/public_key",
+        message: "a verifier must not verify their own solution",
+      });
+    }
+    return issues;
+  }
+
+  #refreshEffectiveStatus(indexed: IndexedNode, now: string): IndexedNode {
+    if (indexed.node_type !== "Recipe") {
+      return indexed;
+    }
+    const receipts = this.#receiptsFor(indexed.cid);
+    if (receipts.length === 0) {
+      return indexed;
+    }
+    const latest = receipts.reduce(
+      (a, b) => (Date.parse(a.timestamp) > Date.parse(b.timestamp) ? a : b),
+      receipts[0]!,
+    );
+    const effective = computeEffectiveStatus(indexed.node, {
+      latestReceipt: latest,
+      triggerFired: false,
+      now,
+    });
+    if (effective !== indexed.effective_status) {
+      this.#db.prepare("UPDATE nodes SET effective_status = ? WHERE cid = ?").run(effective, indexed.cid);
+      return { ...indexed, effective_status: effective };
+    }
+    return indexed;
+  }
+
+  #receiptsFor(solutionCid: string): IndexedVerification[] {
+    const rows = this.#db.prepare(
+      "SELECT * FROM verifications WHERE solution_cid = ?",
+    ).all(solutionCid) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      receipt_cid: r.receipt_cid as string,
+      problem_cid: r.problem_cid as string,
+      solution_cid: r.solution_cid as string,
+      environment_hash: r.environment_hash as string,
+      public_key: r.public_key as string,
+      timestamp: r.timestamp as string,
+      valid_until: r.valid_until as string | null,
+      total: r.total as number,
+      passed: r.passed as number,
+      failed: r.failed as number,
+    }));
+  }
+
+  search(options: SearchOptions): SearchResult {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    const f = options.filter;
+    const columnMap: Record<string, string> = {
+      node_type: "node_type",
+      node_id: "node_id",
+      effective_status: "effective_status",
+      public_key: "author_public_key",
+      severity: "severity",
+      framework_name: "framework_name",
+    };
+    for (const [key, value] of Object.entries(f)) {
+      const col = columnMap[key];
+      if (col === undefined || value === undefined) {
+        continue;
+      }
+      where.push(`${col} = ?`);
+      params.push(value);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const sortCol = SORT_COLUMNS[options.sort ?? ""] ?? "created_at";
+    const orderSql = `ORDER BY ${sortCol} DESC`;
+    const total = (this.#db.prepare(
+      `SELECT COUNT(*) AS n FROM nodes ${whereSql}`,
+    ).get(...(params as never[])) as { n: number }).n;
+    const rows = this.#db.prepare(
+      `SELECT * FROM nodes ${whereSql} ${orderSql} LIMIT ? OFFSET ?`,
+    ).all(...(params as never[]), options.limit, options.offset) as Record<string, unknown>[];
+    const now = new Date().toISOString();
+    return { data: rows.map((row) => this.#refreshEffectiveStatus(rowToIndexedNode(row), now)), total };
+  }
+
+  #recomputeHeads(nodeId: string): void {
+    const db = this.#db;
+    db.prepare("UPDATE nodes SET head = 0 WHERE node_id = ?").run(nodeId);
+    db.prepare(
+      `UPDATE nodes SET head = 1 WHERE node_id = ? AND cid NOT IN (
+         SELECT supersedes_cid FROM nodes WHERE node_id = ? AND supersedes_cid IS NOT NULL
+       )`,
+    ).run(nodeId, nodeId);
+  }
+
+  #indexTriggers(node: Node, cid: string): void {
+    const triggers = node.osk.knowledge_lifecycle.deprecation_triggers ?? [];
+    const stmt = this.#db.prepare(
+      `INSERT INTO deprecation_triggers (node_cid, scope, versioning_scheme, condition)
+       VALUES (?, ?, ?, ?)`,
+    );
+    for (const t of triggers) {
+      stmt.run(cid, t.scope, t.versioning_scheme ?? "semver", t.condition);
+    }
+  }
+
+  close(): void {
+    if (this.#closed) {
+      return;
+    }
+    this.#closed = true;
+    this.#db.close();
+  }
+}
