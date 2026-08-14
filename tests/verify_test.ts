@@ -1,18 +1,30 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { SqliteQueryIndex } from "../src/storage/index.ts";
 import { FileBlockstore } from "../src/storage/blockstore.ts";
-import { IngestService, ValidationError, ReplayUnavailableError } from "../src/storage/ingest.ts";
+import {
+  IngestService,
+  ReplayUnavailableError,
+  ValidationError,
+} from "../src/storage/ingest.ts";
 import { generateKeyPair } from "../src/core/sign.ts";
 import { PlaygroundRegistry } from "../src/verify/registry.ts";
-import { StubReplayExecutor, type ReplayExecutor, type ReplayResult } from "../src/verify/replay.ts";
-import { computeEffectiveStatus, computeConfidence } from "../src/storage/status.ts";
+import {
+  type ReplayExecutor,
+  type ReplayResult,
+  SandboxReplayExecutor,
+  StubReplayExecutor,
+} from "../src/verify/replay.ts";
+import {
+  computeConfidence,
+  computeEffectiveStatus,
+} from "../src/storage/status.ts";
 import type { IndexedVerification } from "../src/storage/types.ts";
 import {
+  cidOf,
   problemNode,
   recipeNode,
-  verificationNode,
   signed,
-  cidOf,
+  verificationNode,
 } from "./fixtures.ts";
 
 function tempDir(): string {
@@ -23,15 +35,24 @@ async function env() {
   const dir = tempDir();
   const index = new SqliteQueryIndex(`${dir}/index.db`);
   index.init();
-  const ingest = new IngestService(new FileBlockstore({ dir: `${dir}/blocks` }), index);
+  const ingest = new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    index,
+  );
   const authorKey = generateKeyPair();
   const verifierKey = generateKeyPair();
 
-  const problem = signed(problemNode(authorKey.publicKeyHex), authorKey.secretKeyHex);
+  const problem = signed(
+    problemNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
   const problemCid = await cidOf(problem);
   await ingest.ingestNode(problem);
 
-  const recipe = signed(recipeNode(authorKey.publicKeyHex), authorKey.secretKeyHex);
+  const recipe = signed(
+    recipeNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
   const recipeCid = await cidOf(recipe);
   await ingest.ingestNode(recipe);
 
@@ -84,7 +105,12 @@ Deno.test("registry rejects unregistered environment hash", async () => {
     registry,
   );
   const receipt = signed(
-    verificationNode(e.verifierKey.publicKeyHex, e.problemCid, e.recipeCid, "e".repeat(64)),
+    verificationNode(
+      e.verifierKey.publicKeyHex,
+      e.problemCid,
+      e.recipeCid,
+      "e".repeat(64),
+    ),
     e.verifierKey.secretKeyHex,
   );
   await assertRejects(
@@ -109,7 +135,12 @@ Deno.test("registry accepts registered environment hash", async () => {
     registry,
   );
   const receipt = signed(
-    verificationNode(e.verifierKey.publicKeyHex, e.problemCid, e.recipeCid, "d".repeat(64)),
+    verificationNode(
+      e.verifierKey.publicKeyHex,
+      e.problemCid,
+      e.recipeCid,
+      "d".repeat(64),
+    ),
     e.verifierKey.secretKeyHex,
   );
   const result = await strict.ingestVerification(receipt);
@@ -145,7 +176,10 @@ class FakeReplay implements ReplayExecutor {
   }
 }
 
-function strictIngest(e: Awaited<ReturnType<typeof env>>, fake: FakeReplay): IngestService {
+function strictIngest(
+  e: Awaited<ReturnType<typeof env>>,
+  fake: FakeReplay,
+): IngestService {
   const registry = new PlaygroundRegistry([{
     environment_hash: "f".repeat(64),
     playground: "sandbox-den",
@@ -177,7 +211,12 @@ Deno.test("enforced replay matching the claim accepts the receipt", async () => 
   const e = await env();
   const ingest = strictIngest(e, new FakeReplay(passingResult));
   const receipt = signed(
-    verificationNode(e.verifierKey.publicKeyHex, e.problemCid, e.recipeCid, "f".repeat(64)),
+    verificationNode(
+      e.verifierKey.publicKeyHex,
+      e.problemCid,
+      e.recipeCid,
+      "f".repeat(64),
+    ),
     e.verifierKey.secretKeyHex,
   );
   const result = await ingest.ingestVerification(receipt);
@@ -189,16 +228,24 @@ Deno.test("enforced replay matching the claim accepts the receipt", async () => 
 
 Deno.test("enforced replay with mismatched counts rejects the receipt", async () => {
   const e = await env();
-  const ingest = strictIngest(e, new FakeReplay(() => ({
-    outcome: "pass",
-    total: 2,
-    passed: 1,
-    failed: 1,
-    log: "mismatch",
-    cases: passingResult().cases,
-  })));
+  const ingest = strictIngest(
+    e,
+    new FakeReplay(() => ({
+      outcome: "pass",
+      total: 2,
+      passed: 1,
+      failed: 1,
+      log: "mismatch",
+      cases: passingResult().cases,
+    })),
+  );
   const receipt = signed(
-    verificationNode(e.verifierKey.publicKeyHex, e.problemCid, e.recipeCid, "f".repeat(64)),
+    verificationNode(
+      e.verifierKey.publicKeyHex,
+      e.problemCid,
+      e.recipeCid,
+      "f".repeat(64),
+    ),
     e.verifierKey.secretKeyHex,
   );
   await assertRejects(
@@ -210,16 +257,27 @@ Deno.test("enforced replay with mismatched counts rejects the receipt", async ()
 
 Deno.test("enforced replay with mismatched cases rejects the receipt", async () => {
   const e = await env();
-  const ingest = strictIngest(e, new FakeReplay(() => ({
-    outcome: "pass",
-    total: 2,
-    passed: 2,
-    failed: 0,
-    log: "case mismatch",
-    cases: [{ name: "small", result: "fail" }, { name: "large", result: "pass" }],
-  })));
+  const ingest = strictIngest(
+    e,
+    new FakeReplay(() => ({
+      outcome: "pass",
+      total: 2,
+      passed: 2,
+      failed: 0,
+      log: "case mismatch",
+      cases: [{ name: "small", result: "fail" }, {
+        name: "large",
+        result: "pass",
+      }],
+    })),
+  );
   const receipt = signed(
-    verificationNode(e.verifierKey.publicKeyHex, e.problemCid, e.recipeCid, "f".repeat(64)),
+    verificationNode(
+      e.verifierKey.publicKeyHex,
+      e.problemCid,
+      e.recipeCid,
+      "f".repeat(64),
+    ),
     e.verifierKey.secretKeyHex,
   );
   await assertRejects(
@@ -231,11 +289,19 @@ Deno.test("enforced replay with mismatched cases rejects the receipt", async () 
 
 Deno.test("enforced replay that throws surfaces 503 (ReplayUnavailableError)", async () => {
   const e = await env();
-  const ingest = strictIngest(e, new FakeReplay(() => {
-    throw new Error("sandbox down");
-  }));
+  const ingest = strictIngest(
+    e,
+    new FakeReplay(() => {
+      throw new Error("sandbox down");
+    }),
+  );
   const receipt = signed(
-    verificationNode(e.verifierKey.publicKeyHex, e.problemCid, e.recipeCid, "f".repeat(64)),
+    verificationNode(
+      e.verifierKey.publicKeyHex,
+      e.problemCid,
+      e.recipeCid,
+      "f".repeat(64),
+    ),
     e.verifierKey.secretKeyHex,
   );
   await assertRejects(
@@ -324,4 +390,71 @@ Deno.test("effective_status: failed receipt makes recipe disputed", () => {
     now: "2026-08-14T00:00:00Z",
   });
   assertEquals(disputed, "disputed");
+});
+
+Deno.test("sandbox executor rejects an empty command", () => {
+  assertThrows(() => new SandboxReplayExecutor([]));
+  assertThrows(() => new SandboxReplayExecutor(["  "]));
+});
+
+Deno.test("sandbox executor parses JSON output", async () => {
+  const key = generateKeyPair();
+  const recipe = signed(recipeNode(key.publicKeyHex), key.secretKeyHex);
+  const problem = signed(problemNode(key.publicKeyHex), key.secretKeyHex);
+  const code =
+    `console.log(JSON.stringify({outcome:"pass",total:1,passed:1,failed:0,log:"ok",cases:[{name:"x",result:"pass"}]}))`;
+  const exec = new SandboxReplayExecutor([Deno.execPath(), "eval", code]);
+  const result = await exec.replay(recipe, problem, {
+    environment_hash: "a".repeat(64),
+    playground: "sandbox-den",
+    platform: "deno",
+    version: "1.0.0",
+    config_hash: "b".repeat(64),
+  });
+  assertEquals(result.outcome, "pass");
+  assertEquals(result.total, 1);
+  assertEquals(result.cases, [{ name: "x", result: "pass" }]);
+});
+
+Deno.test("sandbox executor reports non-JSON output as an error", async () => {
+  const key = generateKeyPair();
+  const recipe = signed(recipeNode(key.publicKeyHex), key.secretKeyHex);
+  const problem = signed(problemNode(key.publicKeyHex), key.secretKeyHex);
+  const exec = new SandboxReplayExecutor([
+    Deno.execPath(),
+    "eval",
+    "console.log('not json')",
+  ]);
+  const result = await exec.replay(recipe, problem, {
+    environment_hash: "a".repeat(64),
+    playground: "sandbox-den",
+    platform: "deno",
+    version: "1.0.0",
+    config_hash: "b".repeat(64),
+  });
+  assertEquals(result.outcome, "error");
+  assertEquals(result.log.includes("non-JSON"), true);
+});
+
+Deno.test("sandbox executor times out and kills a hung command", async () => {
+  const key = generateKeyPair();
+  const recipe = signed(recipeNode(key.publicKeyHex), key.secretKeyHex);
+  const problem = signed(problemNode(key.publicKeyHex), key.secretKeyHex);
+  const exec = new SandboxReplayExecutor([
+    Deno.execPath(),
+    "eval",
+    "await new Promise(r => setTimeout(r, 60_000))",
+  ], 200);
+  const started = performance.now();
+  const result = await exec.replay(recipe, problem, {
+    environment_hash: "a".repeat(64),
+    playground: "sandbox-den",
+    platform: "deno",
+    version: "1.0.0",
+    config_hash: "b".repeat(64),
+  });
+  const elapsed = performance.now() - started;
+  assertEquals(result.outcome, "error");
+  assertEquals(result.log.includes("timeout"), true);
+  assertEquals(elapsed < 10_000, true);
 });
