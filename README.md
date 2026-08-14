@@ -80,9 +80,15 @@ deno task cli -- rebuild --data-dir data
 | `CORPUS_REPLAY`         | `stub`         | `stub` or `sandbox` replay executor                                     |
 | `CORPUS_SANDBOX_CMD`    | —              | Sandbox command; required for `sandbox` mode                            |
 | `CORPUS_VERSIONS`       | —              | Path to a JSON file pinning `{scope: version}` for deprecation triggers |
+| `CORPUS_CORS_ORIGINS`   | —              | Comma-separated origins allowed via CORS; `*` allows any origin         |
 
 `CORPUS_REPLAY=sandbox` also requires `data/registry.json`, a JSON array of
 environment specs keyed by `environment_hash`.
+
+## Security
+
+The API has no authentication. It is intended to run on localhost or a trusted
+network only. Revisit access control before exposing it beyond that boundary.
 
 ## Tests
 
@@ -100,6 +106,6 @@ deno task check       # type-check entry points
 - `src/core/` — CIDs, canonical serialization, signatures, UUIDs
 - `src/schema/` — JSON Schema definitions and validation
 - `src/storage/` — SQLite index, blockstore, ingest, rebuild, status
-- `src/verify/` — playground registry and replay executors
+- `src/execution/` — playground registry and replay executors
 - `src/api/` — JSON:API server
 - `src/cli/` — command line interface
