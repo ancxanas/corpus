@@ -623,3 +623,73 @@ Deno.test("internal errors map to 500 with a JSON:API error body", async () => {
   assertEquals(body.errors[0].status, "500");
   await Deno.remove(dir, { recursive: true });
 });
+
+Deno.test("error documents carry the JSON:API version and error fields", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, "/nodes/nonexistent-cid");
+  const body = await res.json();
+  assertEquals(res.status, 404);
+  assertEquals(body.jsonapi.version, "1.0");
+  assertEquals(Array.isArray(body.errors), true);
+  assertEquals(body.errors.length, 1);
+  assertEquals(body.errors[0].status, "404");
+  assertEquals(typeof body.errors[0].title, "string");
+  assertEquals(body.errors[0].title.length > 0, true);
+  assertEquals(typeof body.errors[0].detail, "string");
+  assertEquals(body.errors[0].detail.length > 0, true);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("multi-page results expose first, last, next, and prev links", async () => {
+  const { handler, ingest, authorKey, dir } = await makeServer();
+  for (const title of ["second problem", "third problem"]) {
+    const extra = signed(
+      problemNode(authorKey.publicKeyHex, { title }),
+      authorKey.secretKeyHex,
+    );
+    await ingest.ingestNode(extra);
+  }
+  const res = await req(handler, "/nodes?page[limit]=1&page[offset]=1");
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  assertEquals(body.meta.total, 4);
+  assertEquals(body.data.length, 1);
+  assertEquals(
+    decodeURIComponent(body.links.first).endsWith("page[offset]=0"),
+    true,
+  );
+  assertEquals(
+    decodeURIComponent(body.links.last).endsWith("page[offset]=3"),
+    true,
+  );
+  assertEquals(
+    decodeURIComponent(body.links.next).endsWith("page[offset]=2"),
+    true,
+  );
+  assertEquals(
+    decodeURIComponent(body.links.prev).endsWith("page[offset]=0"),
+    true,
+  );
+
+  const firstPage = await req(handler, "/nodes?page[limit]=1");
+  const firstBody = await firstPage.json();
+  assertEquals(
+    decodeURIComponent(firstBody.links.next).endsWith("page[offset]=1"),
+    true,
+  );
+  assertEquals(firstBody.links.prev, null);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("HEAD returns empty bodies on collection and resource routes", async () => {
+  const { handler, problemCid, dir } = await makeServer();
+  const recipes = await req(handler, "/recipes", { method: "HEAD" });
+  assertEquals(recipes.status, 200);
+  assertEquals(await recipes.text(), "");
+  assertEquals(recipes.headers.get("content-type"), "application/vnd.api+json");
+
+  const node = await req(handler, `/nodes/${problemCid}`, { method: "HEAD" });
+  assertEquals(node.status, 200);
+  assertEquals(await node.text(), "");
+  await Deno.remove(dir, { recursive: true });
+});
