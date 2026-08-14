@@ -10,6 +10,10 @@
     "ajv": "npm:ajv@8.20.0"
   },
   "tasks": {
+    "fmt": "deno fmt",
+    "fmt:check": "deno fmt --check",
+    "lint": "deno lint",
+    "check": "deno check src/main.ts src/cli/main.ts",
     "test": "deno test --allow-read --allow-env --allow-write --allow-net --allow-run",
     "cov": "deno test --allow-read --allow-env --allow-write --allow-net --allow-run --coverage=coverage --clean",
     "cov:report": "deno coverage coverage/ --exclude=node_modules --exclude=deno_modules",
