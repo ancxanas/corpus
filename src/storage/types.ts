@@ -1,5 +1,12 @@
 import type { EffectiveStatus, Node, NodeType } from "../core/types.ts";
 
+export class InvalidNodeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidNodeError";
+  }
+}
+
 export interface IndexedNode {
   cid: string;
   node_id: string;

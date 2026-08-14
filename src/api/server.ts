@@ -1,9 +1,20 @@
 import type { IngestService } from "../storage/ingest.ts";
 import type { QueryIndex } from "../storage/index.ts";
 import type { Node, NodeType } from "../core/types.ts";
-import { ValidationError, SignatureError, ReplayUnavailableError } from "../storage/ingest.ts";
+import {
+  ReplayUnavailableError,
+  SignatureError,
+  ValidationError,
+} from "../storage/ingest.ts";
+import { InvalidNodeError } from "../storage/types.ts";
 import { loadSchema } from "../schema/index.ts";
-import { PLURAL, document, errorDocument, resourceIdentifier, serializeResource } from "./jsonapi.ts";
+import {
+  document,
+  errorDocument,
+  PLURAL,
+  resourceIdentifier,
+  serializeResource,
+} from "./jsonapi.ts";
 import {
   extractRelationships,
   linkedCidsOf,
@@ -12,7 +23,12 @@ import {
 
 const JSONAPI = "application/vnd.api+json";
 const DEFAULT_BODY_LIMIT = 1_048_576;
-const ACCEPTABLE_MEDIA = new Set([JSONAPI, "application/json", "*/*", "application/*"]);
+const ACCEPTABLE_MEDIA = new Set([
+  JSONAPI,
+  "application/json",
+  "*/*",
+  "application/*",
+]);
 const ADVERTISED_COLLECTIONS = new Set([
   "problems",
   "guides",
@@ -84,7 +100,11 @@ function payloadTooLarge(limit: number): Response {
 
 function notFoundResponse(): Response {
   return jsonResponse(
-    errorDocument([{ status: "404", title: "not found", detail: "No route matches this request." }]),
+    errorDocument([{
+      status: "404",
+      title: "not found",
+      detail: "No route matches this request.",
+    }]),
     404,
   );
 }
@@ -101,7 +121,11 @@ function pluralToNodeType(value: string): NodeType | null {
 function toNodeTypeError(): Response {
   return jsonResponse(
     errorDocument([
-      { status: "422", title: "unsupported node type", detail: "The declared node type is not supported." },
+      {
+        status: "422",
+        title: "unsupported node type",
+        detail: "The declared node type is not supported.",
+      },
     ]),
     422,
   );
@@ -166,7 +190,11 @@ async function parseBody(request: Request, limit: number): Promise<ParsedBody> {
   }
 
   try {
-    return { ok: true, tooLarge: false, body: JSON.parse(new TextDecoder().decode(bytes)) };
+    return {
+      ok: true,
+      tooLarge: false,
+      body: JSON.parse(new TextDecoder().decode(bytes)),
+    };
   } catch {
     return { ok: false, tooLarge: false, body: null };
   }
@@ -210,12 +238,22 @@ export function createApp(
     const requestId = crypto.randomUUID();
     const started = performance.now();
     const isHead = request.method === "HEAD";
-    const response = await route(request, url, isHead ? "GET" : request.method, requestId);
+    const response = await route(
+      request,
+      url,
+      isHead ? "GET" : request.method,
+      requestId,
+    );
     const finished = isHead
-      ? new Response(null, { status: response.status, headers: response.headers })
+      ? new Response(null, {
+        status: response.status,
+        headers: response.headers,
+      })
       : response;
     const duration = Math.round(performance.now() - started);
-    logger(`${request.method} ${url.pathname} ${finished.status} ${duration}ms ${requestId}`);
+    logger(
+      `${request.method} ${url.pathname} ${finished.status} ${duration}ms ${requestId}`,
+    );
     const headers = new Headers(finished.headers);
     headers.set("X-Request-Id", requestId);
     return new Response(finished.body, { status: finished.status, headers });
@@ -230,7 +268,10 @@ export function createApp(
     if (!acceptsJsonApi(request)) {
       return notAcceptable();
     }
-    const baseUrl = (Deno.env.get("CORPUS_BASE_URL") ?? url.origin).replace(/\/+$/, "");
+    const baseUrl = (Deno.env.get("CORPUS_BASE_URL") ?? url.origin).replace(
+      /\/+$/,
+      "",
+    );
     const segments = url.pathname.split("/").filter(Boolean);
 
     try {
@@ -238,11 +279,15 @@ export function createApp(
         return jsonResponse(entryPoint(baseUrl));
       }
 
-      if (segments[0] === "nodes" && method === "POST" && segments.length === 1) {
+      if (
+        segments[0] === "nodes" && method === "POST" && segments.length === 1
+      ) {
         return await createNode(request, baseUrl);
       }
 
-      if (segments[0] === "nodes" && method === "GET" && segments.length === 1) {
+      if (
+        segments[0] === "nodes" && method === "GET" && segments.length === 1
+      ) {
         return await searchNodes(request, baseUrl);
       }
 
@@ -288,7 +333,9 @@ export function createApp(
         return await searchNodes(request, baseUrl, segments[0]);
       }
 
-      if (segments[0] === "schemas" && segments.length === 2 && method === "GET") {
+      if (
+        segments[0] === "schemas" && segments.length === 2 && method === "GET"
+      ) {
         return await getSchema(segments[1]!);
       }
 
@@ -314,7 +361,11 @@ export function createApp(
       if (e instanceof SignatureError) {
         return jsonResponse(
           errorDocument([
-            { status: "422", title: "invalid signature", detail: "The node signature is invalid." },
+            {
+              status: "422",
+              title: "invalid signature",
+              detail: "The node signature is invalid.",
+            },
           ]),
           422,
         );
@@ -322,20 +373,39 @@ export function createApp(
       if (e instanceof ReplayUnavailableError) {
         return jsonResponse(
           errorDocument([
-            { status: "503", title: "verification execution unavailable", detail: e.message },
+            {
+              status: "503",
+              title: "verification execution unavailable",
+              detail: e.message,
+            },
           ]),
           503,
         );
       }
+      if (e instanceof InvalidNodeError) {
+        return jsonResponse(
+          errorDocument([
+            { status: "422", title: "invalid node", detail: e.message },
+          ]),
+          422,
+        );
+      }
       console.error(`[${requestId}]`, e);
       return jsonResponse(
-        errorDocument([{ status: "500", title: "internal error", detail: "An unexpected error occurred." }]),
+        errorDocument([{
+          status: "500",
+          title: "internal error",
+          detail: "An unexpected error occurred.",
+        }]),
         500,
       );
     }
   }
 
-  async function createNode(request: Request, baseUrl: string): Promise<Response> {
+  async function createNode(
+    request: Request,
+    baseUrl: string,
+  ): Promise<Response> {
     if (!hasJsonApiContentType(request)) {
       return unsupportedMediaType();
     }
@@ -343,11 +413,18 @@ export function createApp(
     if (parsed.tooLarge) {
       return payloadTooLarge(bodyLimit);
     }
-    const data = (parsed.body as { data?: { type?: string; attributes?: unknown } } | null)?.data;
+    const data =
+      (parsed.body as { data?: { type?: string; attributes?: unknown } } | null)
+        ?.data;
     if (!data?.attributes) {
       return jsonResponse(
         errorDocument([
-          { status: "422", title: "invalid request", detail: "Expected a data.attributes object.", source: { pointer: "/data/attributes" } },
+          {
+            status: "422",
+            title: "invalid request",
+            detail: "Expected a data.attributes object.",
+            source: { pointer: "/data/attributes" },
+          },
         ]),
         422,
       );
@@ -360,17 +437,44 @@ export function createApp(
     if (node.osk?.node_type !== declared) {
       return jsonResponse(
         errorDocument([
-          { status: "422", title: "node type mismatch", detail: "data.type does not match osk.node_type." },
+          {
+            status: "422",
+            title: "node type mismatch",
+            detail: "data.type does not match osk.node_type.",
+          },
+        ]),
+        422,
+      );
+    }
+    if (declared === "Verification") {
+      return jsonResponse(
+        errorDocument([
+          {
+            status: "422",
+            title: "wrong endpoint",
+            detail: "Post Verification nodes via POST /verifications.",
+            source: { pointer: "/data/type" },
+          },
         ]),
         422,
       );
     }
     const indexed = await ingest.ingestNode(node);
-    const resource = serializeResource(indexed, baseUrl, extractRelationships(index, indexed.node, indexed.cid));
-    return jsonResponse(document(resource, { baseUrl, meta: { cid: indexed.cid } }), 201);
+    const resource = serializeResource(
+      indexed,
+      baseUrl,
+      extractRelationships(index, indexed.node, indexed.cid),
+    );
+    return jsonResponse(
+      document(resource, { baseUrl, meta: { cid: indexed.cid } }),
+      201,
+    );
   }
 
-  async function createVerification(request: Request, baseUrl: string): Promise<Response> {
+  async function createVerification(
+    request: Request,
+    baseUrl: string,
+  ): Promise<Response> {
     if (!hasJsonApiContentType(request)) {
       return unsupportedMediaType();
     }
@@ -378,11 +482,18 @@ export function createApp(
     if (parsed.tooLarge) {
       return payloadTooLarge(bodyLimit);
     }
-    const data = (parsed.body as { data?: { type?: string; attributes?: unknown } } | null)?.data;
+    const data =
+      (parsed.body as { data?: { type?: string; attributes?: unknown } } | null)
+        ?.data;
     if (!data?.attributes) {
       return jsonResponse(
         errorDocument([
-          { status: "422", title: "invalid request", detail: "Expected a data.attributes object.", source: { pointer: "/data/attributes" } },
+          {
+            status: "422",
+            title: "invalid request",
+            detail: "Expected a data.attributes object.",
+            source: { pointer: "/data/attributes" },
+          },
         ]),
         422,
       );
@@ -391,7 +502,11 @@ export function createApp(
     if (node.osk?.node_type !== "Verification") {
       return jsonResponse(
         errorDocument([
-          { status: "422", title: "node type mismatch", detail: "This endpoint only accepts Verification nodes." },
+          {
+            status: "422",
+            title: "node type mismatch",
+            detail: "This endpoint only accepts Verification nodes.",
+          },
         ]),
         422,
       );
@@ -399,10 +514,22 @@ export function createApp(
     const result = await ingest.ingestVerification(node);
     const indexed = index.getNode(result.cid);
     const resource = indexed
-      ? serializeResource(indexed, baseUrl, extractRelationships(index, indexed.node, indexed.cid))
+      ? serializeResource(
+        indexed,
+        baseUrl,
+        extractRelationships(index, indexed.node, indexed.cid),
+      )
       : null;
     return jsonResponse(
-      document(resource, { baseUrl, meta: { cid: result.cid, solution_cid: (node.payload as { verification: { target: { solution_id: { "/": string } } } }).verification.target.solution_id["/"] } }),
+      document(resource, {
+        baseUrl,
+        meta: {
+          cid: result.cid,
+          solution_cid: (node.payload as {
+            verification: { target: { solution_id: { "/": string } } };
+          }).verification.target.solution_id["/"],
+        },
+      }),
       201,
     );
   }
@@ -411,21 +538,40 @@ export function createApp(
     const indexed = index.getNode(cid);
     if (!indexed) {
       return jsonResponse(
-        errorDocument([{ status: "404", title: "not found", detail: `No node with CID ${cid}.` }]),
+        errorDocument([{
+          status: "404",
+          title: "not found",
+          detail: `No node with CID ${cid}.`,
+        }]),
         404,
       );
     }
     const params = new URL(request.url).searchParams;
-    const include = (params.get("include") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-    const { resource, included } = serializeWithIncludes(index, indexed, baseUrl, include);
+    const include = (params.get("include") ?? "").split(",").map((s) =>
+      s.trim()
+    ).filter(Boolean);
+    const { resource, included } = serializeWithIncludes(
+      index,
+      indexed,
+      baseUrl,
+      include,
+    );
     return jsonResponse(document(resource, { baseUrl, included }));
   }
 
-  function getRelationship(cid: string, name: string, baseUrl: string): Response {
+  function getRelationship(
+    cid: string,
+    name: string,
+    baseUrl: string,
+  ): Response {
     const indexed = index.getNode(cid);
     if (!indexed) {
       return jsonResponse(
-        errorDocument([{ status: "404", title: "not found", detail: `No node with CID ${cid}.` }]),
+        errorDocument([{
+          status: "404",
+          title: "not found",
+          detail: `No node with CID ${cid}.`,
+        }]),
         404,
       );
     }
@@ -437,7 +583,11 @@ export function createApp(
     return jsonResponse(document(resources, { baseUrl }));
   }
 
-  function searchNodes(request: Request, baseUrl: string, collectionType?: string): Response {
+  function searchNodes(
+    request: Request,
+    baseUrl: string,
+    collectionType?: string,
+  ): Response {
     const params = new URL(request.url).searchParams;
     const filter: Record<string, unknown> = {};
     for (const [key, value] of params) {
@@ -460,14 +610,24 @@ export function createApp(
       }
       filter.node_type = t;
     }
-    const limit = Math.min(Math.max(Number(params.get("page[limit]")) || 25, 1), 100);
+    const limit = Math.min(
+      Math.max(Number(params.get("page[limit]")) || 25, 1),
+      100,
+    );
     const offset = Math.max(Number(params.get("page[offset]")) || 0, 0);
     const sort = (params.get("sort") ?? "-created_at").replace(/^-/, "");
 
     const result = index.search({ filter, sort, limit, offset });
-    const resources = result.data.map((n) => serializeResource(n, baseUrl, extractRelationships(index, n.node, n.cid)));
+    const resources = result.data.map((n) =>
+      serializeResource(n, baseUrl, extractRelationships(index, n.node, n.cid))
+    );
 
-    const pageLinks: Record<string, string> = { first: "", last: "", next: "", prev: "" };
+    const pageLinks: Record<string, string> = {
+      first: "",
+      last: "",
+      next: "",
+      prev: "",
+    };
     const lastOffset = Math.max(0, Math.ceil(result.total / limit) - 1) * limit;
     const setParams = (o: number) => {
       const p = new URL(request.url);
@@ -476,7 +636,9 @@ export function createApp(
     };
     pageLinks.first = setParams(0);
     pageLinks.last = setParams(lastOffset);
-    pageLinks.next = offset + limit < result.total ? setParams(offset + limit) : "";
+    pageLinks.next = offset + limit < result.total
+      ? setParams(offset + limit)
+      : "";
     pageLinks.prev = offset > 0 ? setParams(Math.max(0, offset - limit)) : "";
 
     return jsonResponse(
@@ -499,18 +661,28 @@ export function createApp(
       const versions = index.getVersions(nodeId);
       if (versions.length === 0) {
         return jsonResponse(
-          errorDocument([{ status: "404", title: "not found", detail: `No node with node_id ${nodeId}.` }]),
+          errorDocument([{
+            status: "404",
+            title: "not found",
+            detail: `No node with node_id ${nodeId}.`,
+          }]),
           404,
         );
       }
       const resources = versions.map((n) => serializeResource(n, baseUrl));
-      return jsonResponse(document(resources, { baseUrl, meta: { node_id: nodeId } }));
+      return jsonResponse(
+        document(resources, { baseUrl, meta: { node_id: nodeId } }),
+      );
     }
 
     const heads = index.getHeadVersion(nodeId);
     if (heads.length === 0) {
       return jsonResponse(
-        errorDocument([{ status: "404", title: "not found", detail: `No node with node_id ${nodeId}.` }]),
+        errorDocument([{
+          status: "404",
+          title: "not found",
+          detail: `No node with node_id ${nodeId}.`,
+        }]),
         404,
       );
     }
@@ -523,7 +695,11 @@ export function createApp(
             detail: `node_id ${nodeId} has multiple heads.`,
             source: { parameter: "node_id" },
           },
-          ...heads.map((h) => ({ status: "409", title: "fork head", detail: h.cid })),
+          ...heads.map((h) => ({
+            status: "409",
+            title: "fork head",
+            detail: h.cid,
+          })),
         ]),
         409,
       );
@@ -536,7 +712,10 @@ export function createApp(
     };
     return jsonResponse(
       document(
-        serializeResource(head, baseUrl, { ...extractRelationships(index, head.node, head.cid), versions: relationship }),
+        serializeResource(head, baseUrl, {
+          ...extractRelationships(index, head.node, head.cid),
+          versions: relationship,
+        }),
         { baseUrl },
       ),
     );
@@ -549,7 +728,9 @@ export function createApp(
     }
     const schema = await loadSchema(singular);
     return jsonResponse(
-      document({ type: "schemas", id: nodeType, attributes: schema }, { baseUrl: `/${nodeType}` }),
+      document({ type: "schemas", id: nodeType, attributes: schema }, {
+        baseUrl: `/${nodeType}`,
+      }),
     );
   }
 }
@@ -565,8 +746,28 @@ export function startServer(
   options: StartServerOptions = {},
 ) {
   const handler = createApp(ingest, index);
-  return Deno.serve(
-    { port: options.port ?? 8000, hostname: options.hostname ?? "0.0.0.0", onListen: () => {} },
+  let resolveAddr: (info: { hostname: string; port: number }) => void =
+    () => {};
+  const listening = new Promise<{ hostname: string; port: number }>(
+    (resolve) => {
+      resolveAddr = resolve;
+    },
+  );
+  const server = Deno.serve(
+    {
+      port: options.port ?? 8000,
+      hostname: options.hostname ?? "0.0.0.0",
+      onListen: (info) => resolveAddr(info),
+    },
     handler,
   );
+  return {
+    listening,
+    async shutdown(): Promise<void> {
+      await server.shutdown();
+    },
+    get finished(): Promise<void> {
+      return server.finished;
+    },
+  };
 }

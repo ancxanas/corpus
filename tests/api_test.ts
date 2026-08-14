@@ -6,11 +6,11 @@ import { generateKeyPair } from "../src/core/sign.ts";
 import { createApp } from "../src/api/server.ts";
 import type { Node, ProblemPayload } from "../src/core/types.ts";
 import {
+  cidOf,
   problemNode,
   recipeNode,
-  verificationNode,
   signed,
-  cidOf,
+  verificationNode,
 } from "./fixtures.ts";
 
 function tempDir(): string {
@@ -21,11 +21,17 @@ async function makeServer() {
   const dir = tempDir();
   const index = new SqliteQueryIndex(`${dir}/index.db`);
   index.init();
-  const ingest = new IngestService(new FileBlockstore({ dir: `${dir}/blocks` }), index);
+  const ingest = new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    index,
+  );
   const authorKey = generateKeyPair();
   const verifierKey = generateKeyPair();
 
-  const recipe = signed(recipeNode(authorKey.publicKeyHex), authorKey.secretKeyHex);
+  const recipe = signed(
+    recipeNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
   const recipeCid = await cidOf(recipe);
   await ingest.ingestNode(recipe);
 
@@ -37,13 +43,27 @@ async function makeServer() {
   await ingest.ingestNode(problem);
 
   const receipt = signed(
-    verificationNode(verifierKey.publicKeyHex, problemCid, recipeCid, "a".repeat(64)),
+    verificationNode(
+      verifierKey.publicKeyHex,
+      problemCid,
+      recipeCid,
+      "a".repeat(64),
+    ),
     verifierKey.secretKeyHex,
   );
   await ingest.ingestVerification(receipt);
 
   const handler = createApp(ingest, index, { logger: () => {} });
-  return { handler, index, ingest, authorKey, verifierKey, problemCid, recipeCid, dir };
+  return {
+    handler,
+    index,
+    ingest,
+    authorKey,
+    verifierKey,
+    problemCid,
+    recipeCid,
+    dir,
+  };
 }
 
 async function req(
@@ -103,8 +123,14 @@ Deno.test("GET /nodes/{cid} include=relationships embeds linked resources", asyn
 
 Deno.test("POST /nodes stores a signed node and returns meta.cid", async () => {
   const { handler, authorKey, dir } = await makeServer();
-  const node = problemNode(authorKey.publicKeyHex, { title: "API posted problem" });
-  const res = await req(handler, "/nodes", postNode("problems", signed(node, authorKey.secretKeyHex)));
+  const node = problemNode(authorKey.publicKeyHex, {
+    title: "API posted problem",
+  });
+  const res = await req(
+    handler,
+    "/nodes",
+    postNode("problems", signed(node, authorKey.secretKeyHex)),
+  );
   const body = await res.json();
   assertEquals(res.status, 201);
   assertEquals(typeof body.meta.cid, "string");
@@ -115,8 +141,30 @@ Deno.test("POST /nodes stores a signed node and returns meta.cid", async () => {
 Deno.test("POST /nodes rejects mismatched data.type", async () => {
   const { handler, authorKey, dir } = await makeServer();
   const node = problemNode(authorKey.publicKeyHex);
-  const res = await req(handler, "/nodes", postNode("recipes", signed(node, authorKey.secretKeyHex)));
+  const res = await req(
+    handler,
+    "/nodes",
+    postNode("recipes", signed(node, authorKey.secretKeyHex)),
+  );
   assertEquals(res.status, 422);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("POST /nodes rejects Verification nodes with 422", async () => {
+  const { handler, verifierKey, problemCid, recipeCid, dir } = await makeServer();
+  const node = signed(
+    verificationNode(
+      verifierKey.publicKeyHex,
+      problemCid,
+      recipeCid,
+      "a".repeat(64),
+    ),
+    verifierKey.secretKeyHex,
+  );
+  const res = await req(handler, "/nodes", postNode("verifications", node));
+  const body = await res.json();
+  assertEquals(res.status, 422);
+  assertEquals(body.errors[0].title, "wrong endpoint");
   await Deno.remove(dir, { recursive: true });
 });
 
@@ -132,12 +180,22 @@ Deno.test("POST /nodes rejects bad signature with 422", async () => {
 });
 
 Deno.test("POST /verifications returns meta with solution_cid", async () => {
-  const { handler, verifierKey, problemCid, recipeCid, dir } = await makeServer();
+  const { handler, verifierKey, problemCid, recipeCid, dir } =
+    await makeServer();
   const receipt = signed(
-    verificationNode(verifierKey.publicKeyHex, problemCid, recipeCid, "b".repeat(64)),
+    verificationNode(
+      verifierKey.publicKeyHex,
+      problemCid,
+      recipeCid,
+      "b".repeat(64),
+    ),
     verifierKey.secretKeyHex,
   );
-  const res = await req(handler, "/verifications", postNode("verifications", receipt));
+  const res = await req(
+    handler,
+    "/verifications",
+    postNode("verifications", receipt),
+  );
   const body = await res.json();
   assertEquals(res.status, 201);
   assertEquals(body.meta.solution_cid, recipeCid);
@@ -162,7 +220,11 @@ Deno.test("GET /nodes/by-node-id returns head and versions relationship", async 
   await index.indexNode(signed1, cid1, new Date().toISOString());
 
   const v2 = signed(
-    problemNode(authorKey.publicKeyHex, { nodeId: node.osk.node_id, supersedesCid: cid1, title: "v2" }),
+    problemNode(authorKey.publicKeyHex, {
+      nodeId: node.osk.node_id,
+      supersedesCid: cid1,
+      title: "v2",
+    }),
     authorKey.secretKeyHex,
   );
   const cid2 = await cidOf(v2);
@@ -184,11 +246,19 @@ Deno.test("GET /nodes/by-node-id returns 409 on fork", async () => {
   await index.indexNode(signed1, cid1, new Date().toISOString());
 
   const a = signed(
-    problemNode(authorKey.publicKeyHex, { nodeId: node.osk.node_id, supersedesCid: cid1, title: "fork variant A" }),
+    problemNode(authorKey.publicKeyHex, {
+      nodeId: node.osk.node_id,
+      supersedesCid: cid1,
+      title: "fork variant A",
+    }),
     authorKey.secretKeyHex,
   );
   const b = signed(
-    problemNode(authorKey.publicKeyHex, { nodeId: node.osk.node_id, supersedesCid: cid1, title: "fork variant B" }),
+    problemNode(authorKey.publicKeyHex, {
+      nodeId: node.osk.node_id,
+      supersedesCid: cid1,
+      title: "fork variant B",
+    }),
     authorKey.secretKeyHex,
   );
   await index.indexNode(a, await cidOf(a), new Date().toISOString());
@@ -207,7 +277,10 @@ Deno.test("GET /schemas/{node_type} returns the JSON Schema", async () => {
   const body = await res.json();
   assertEquals(res.status, 200);
   assertEquals(body.data.id, "recipes");
-  assertEquals(body.data.attributes.properties.osk.allOf[1].properties.node_type.const, "Recipe");
+  assertEquals(
+    body.data.attributes.properties.osk.allOf[1].properties.node_type.const,
+    "Recipe",
+  );
   await Deno.remove(dir, { recursive: true });
 });
 
@@ -262,7 +335,10 @@ Deno.test("negative page limit is clamped", async () => {
 
 Deno.test("POST /nodes without the JSON:API content type returns 415", async () => {
   const { handler, authorKey, dir } = await makeServer();
-  const node = signed(problemNode(authorKey.publicKeyHex), authorKey.secretKeyHex);
+  const node = signed(
+    problemNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
   const res = await req(handler, "/nodes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -282,7 +358,10 @@ Deno.test("GET / with an unsupported Accept header returns 406", async () => {
 Deno.test("POST /nodes over the body limit returns 413", async () => {
   const { index, ingest, authorKey, dir } = await makeServer();
   const small = createApp(ingest, index, { bodyLimit: 64 });
-  const node = signed(problemNode(authorKey.publicKeyHex), authorKey.secretKeyHex);
+  const node = signed(
+    problemNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
   const res = await req(small, "/nodes", postNode("problems", node));
   assertEquals(res.status, 413);
   await Deno.remove(dir, { recursive: true });
@@ -309,7 +388,9 @@ Deno.test("by-node-id rejects extra path segments with 404", async () => {
 Deno.test("responses carry X-Request-Id and the logger sees one line", async () => {
   const { ingest, index, dir } = await makeServer();
   const lines: string[] = [];
-  const logged = createApp(ingest, index, { logger: (line) => lines.push(line) });
+  const logged = createApp(ingest, index, {
+    logger: (line) => lines.push(line),
+  });
   const res = await req(logged, "/nodes");
   const requestId = res.headers.get("x-request-id");
   assertEquals(requestId === null, false);
@@ -335,7 +416,10 @@ Deno.test("CORPUS_BASE_URL overrides self links", async () => {
 
 Deno.test("POST /nodes rejects a non-CID link with 422", async () => {
   const { handler, authorKey, dir } = await makeServer();
-  const node = signed(problemNode(authorKey.publicKeyHex), authorKey.secretKeyHex) as Node<ProblemPayload>;
+  const node = signed(
+    problemNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  ) as Node<ProblemPayload>;
   const tampered = {
     ...node,
     payload: {
@@ -373,7 +457,10 @@ Deno.test("bad sort falls back to created_at", async () => {
 
 Deno.test("unknown filter fields are ignored", async () => {
   const { handler, dir } = await makeServer();
-  const res = await req(handler, "/nodes?filter[bogus_field]=x&filter[node_type]=problems");
+  const res = await req(
+    handler,
+    "/nodes?filter[bogus_field]=x&filter[node_type]=problems",
+  );
   const body = await res.json();
   assertEquals(res.status, 200);
   assertEquals(body.meta.total, 1);
@@ -403,7 +490,10 @@ Deno.test("internal errors map to 500 with a JSON:API error body", async () => {
   const dir = tempDir();
   const flaky = new FlakyIndex(`${dir}/index.db`);
   flaky.init();
-  const ingest = new IngestService(new FileBlockstore({ dir: `${dir}/blocks` }), flaky);
+  const ingest = new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    flaky,
+  );
   const handler = createApp(ingest, flaky, { logger: () => {} });
   const res = await req(handler, "/nodes");
   const body = await res.json();
