@@ -1,8 +1,14 @@
 import { computeCidFromBytes } from "../core/cid.ts";
 
+export interface Block {
+  cid: string;
+  bytes: Uint8Array;
+}
+
 export interface Blockstore {
   put(bytes: Uint8Array): Promise<string>;
   delete(cid: string): Promise<void>;
+  list(): Promise<Block[]>;
 }
 
 export interface FileBlockstoreOptions {
@@ -29,6 +35,30 @@ export class FileBlockstore implements Blockstore {
     } catch {
       // file already absent: nothing to clean up
     }
+  }
+
+  async list(): Promise<Block[]> {
+    const entries = [];
+    try {
+      for await (const entry of Deno.readDir(this.#dir)) {
+        if (entry.isFile && entry.name.endsWith(".json")) {
+          entries.push(entry.name);
+        }
+      }
+    } catch {
+      return [];
+    }
+    const blocks: Block[] = [];
+    for (const name of entries) {
+      const cid = name.slice(0, -".json".length);
+      try {
+        const bytes = await Deno.readFile(this.filePath(cid));
+        blocks.push({ cid, bytes });
+      } catch {
+        // a file that vanished between listing and reading is skipped
+      }
+    }
+    return blocks;
   }
 
   private filePath(cid: string): string {

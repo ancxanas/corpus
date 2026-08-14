@@ -1,7 +1,13 @@
-import { signNode, generateKeyPair } from "../core/sign.ts";
+import { generateKeyPair, signNode } from "../core/sign.ts";
 import { uuidv7 } from "../core/uuidv7.ts";
 import type { Node } from "../core/types.ts";
-import { problemNode as problemTemplate, recipeNode as recipeTemplate } from "./templates.ts";
+import {
+  problemNode as problemTemplate,
+  recipeNode as recipeTemplate,
+} from "./templates.ts";
+import { SqliteQueryIndex } from "../storage/index.ts";
+import { FileBlockstore } from "../storage/blockstore.ts";
+import { rebuildIndex } from "../storage/rebuild.ts";
 
 const BASE_URL = Deno.env.get("CORPUS_BASE_URL") ?? "http://127.0.0.1:8000";
 
@@ -11,10 +17,14 @@ interface Flags {
 
 const USAGE: Record<string, string> = {
   keygen: "usage: corpus keygen [--output FILE]",
-  node: "usage: corpus node { create | template } --type T --key KEY [--file FILE]",
-  verify: "usage: corpus verify --problem CID --solution CID --key KEY --env-hash HASH --suite FILE [--playground NAME]",
+  node:
+    "usage: corpus node { create | template } --type T --key KEY [--file FILE]",
+  verify:
+    "usage: corpus verify --problem CID --solution CID --key KEY --env-hash HASH --suite FILE [--playground NAME]",
   get: "usage: corpus get --cid CID",
-  search: "usage: corpus search [--type T] [--status S] [--severity S] [--framework F]",
+  search:
+    "usage: corpus search [--type T] [--status S] [--severity S] [--framework F]",
+  rebuild: "usage: corpus rebuild [--data-dir DIR]",
 };
 
 const HELP: Record<string, string> = {
@@ -59,6 +69,10 @@ ${USAGE.search}
   --status S      filter by effective status
   --severity S    filter by severity (problems only)
   --framework F   filter by framework name`,
+  rebuild: `Rebuild the index from stored blocks.
+
+${USAGE.rebuild}
+  --data-dir DIR  data directory (default: CORPUS_DATA_DIR or "data")`,
 };
 
 const TOP_HELP = `The Corpus CLI.
@@ -70,6 +84,7 @@ commands:
   verify        post a Verification receipt
   get           fetch a node by CID
   search        search nodes
+  rebuild       rebuild the index from stored blocks
 
 base url: ${BASE_URL} (set CORPUS_BASE_URL to change)
 
@@ -108,11 +123,18 @@ function usageError(message: string): never {
 }
 
 async function api(path: string, init?: RequestInit): Promise<unknown> {
-  const res = await fetch(`${BASE_URL}${path}`, init);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, init);
+  } catch (e) {
+    fail(`cannot reach the server at ${BASE_URL}: ${(e as Error).message}`);
+  }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     const errors = (body as {
-      errors?: Array<{ title?: string; detail?: string; source?: { pointer?: string } }>;
+      errors?: Array<
+        { title?: string; detail?: string; source?: { pointer?: string } }
+      >;
     })?.errors ?? [];
     const details = errors
       .map((e) => {
@@ -120,7 +142,9 @@ async function api(path: string, init?: RequestInit): Promise<unknown> {
         return `${e.title}${e.detail ? `: ${e.detail}` : ""}${pointer}`;
       })
       .join("; ");
-    fail(`request to ${path} failed (${res.status}): ${details || res.statusText}`);
+    fail(
+      `request to ${path} failed (${res.status}): ${details || res.statusText}`,
+    );
   }
   return body;
 }
@@ -199,15 +223,22 @@ async function cmdVerify(flags: Flags): Promise<void> {
   const suiteFile = flags.suite;
   const playground = flags.playground ?? "sandbox-den";
   if (!problemCid || !solutionCid || !keyFile || !envHash || !suiteFile) {
-    usageError("verify requires --problem, --solution, --key, --env-hash, --suite");
+    usageError(
+      "verify requires --problem, --solution, --key, --env-hash, --suite",
+    );
   }
   const suite = loadJson(suiteFile) as {
     total: number;
     passed: number;
     failed: number;
-    cases: Array<{ name: string; expected: string; actual: string; result: string }>;
+    cases: Array<
+      { name: string; expected: string; actual: string; result: string }
+    >;
   };
-  const keys = loadJson(keyFile) as { secret_key?: string; public_key?: string };
+  const keys = loadJson(keyFile) as {
+    secret_key?: string;
+    public_key?: string;
+  };
   if (!keys.secret_key || !keys.public_key) {
     fail(`key file ${keyFile} must have secret_key and public_key`);
   }
@@ -218,7 +249,10 @@ async function cmdVerify(flags: Flags): Promise<void> {
       version: "0.3.0",
       node_type: "Verification",
       node_id: uuidv7(),
-      knowledge_lifecycle: { status: "active", last_verified: new Date().toISOString() },
+      knowledge_lifecycle: {
+        status: "active",
+        last_verified: new Date().toISOString(),
+      },
       attribution: { author_type: "agent", public_key: publicKey },
     },
     payload: {
@@ -240,7 +274,9 @@ async function cmdVerify(flags: Flags): Promise<void> {
   const body = await api("/verifications", {
     method: "POST",
     headers: { "Content-Type": "application/vnd.api+json" },
-    body: JSON.stringify({ data: { type: "verifications", attributes: signed } }),
+    body: JSON.stringify({
+      data: { type: "verifications", attributes: signed },
+    }),
   });
   console.log(`stored ${(body as { meta: { cid: string } }).meta.cid}`);
 }
@@ -269,13 +305,31 @@ async function cmdSearch(flags: Flags): Promise<void> {
     }
   }
   const body = await api(`/nodes?${params.toString()}`) as {
-    data: Array<{ id: string; type: string; meta: { effective_status: string; confidence_score: number } }>;
+    data: Array<
+      {
+        id: string;
+        type: string;
+        meta: { effective_status: string; confidence_score: number };
+      }
+    >;
     meta: { total: number };
   };
   console.log(`total: ${body.meta.total}`);
   for (const item of body.data) {
-    console.log(`${item.type}  ${item.id}  ${item.meta.effective_status}  conf=${item.meta.confidence_score}`);
+    console.log(
+      `${item.type}  ${item.id}  ${item.meta.effective_status}  conf=${item.meta.confidence_score}`,
+    );
   }
+}
+
+async function cmdRebuild(flags: Flags): Promise<void> {
+  const root = flags["data-dir"] ?? Deno.env.get("CORPUS_DATA_DIR") ?? "data";
+  const index = new SqliteQueryIndex(`${root}/corpus.db`);
+  index.init();
+  const blockstore = new FileBlockstore({ dir: `${root}/blocks` });
+  const count = await rebuildIndex(blockstore, index);
+  console.log(`index rebuilt from ${count} blocks`);
+  index.close();
 }
 
 function printHelp(name: string): void {
@@ -339,6 +393,12 @@ switch (sub) {
       printHelp("search");
     }
     await cmdSearch(flags);
+    break;
+  case "rebuild":
+    if (wantsHelp) {
+      printHelp("rebuild");
+    }
+    await cmdRebuild(flags);
     break;
   default:
     usageError(`unknown command '${sub}'`);
