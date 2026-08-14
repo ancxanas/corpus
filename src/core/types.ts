@@ -120,3 +120,8 @@ export interface Node<T = unknown> {
   osk: Osk;
   payload: T;
 }
+
+export interface ValidationIssue {
+  pointer: string;
+  message: string;
+}

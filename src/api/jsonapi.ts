@@ -1,11 +1,5 @@
 import type { IndexedNode } from "../storage/types.ts";
-import type { NodeType } from "../core/types.ts";
-
-export const PLURAL: Record<NodeType, string> = {
-  Problem: "problems",
-  Recipe: "recipes",
-  Verification: "verifications",
-};
+import { pluralOf } from "../nodetypes/registry.ts";
 
 export interface JsonApiError {
   status: string;
@@ -34,7 +28,7 @@ export function serializeResource(
   relationships: Record<string, { related: string; data: ResourceId[] }> = {},
 ): Record<string, unknown> {
   return {
-    type: PLURAL[indexed.node_type],
+    type: pluralOf(indexed.node_type),
     id: indexed.cid,
     links: { self: `${baseUrl}/nodes/${indexed.cid}` },
     attributes: {

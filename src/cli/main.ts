@@ -1,10 +1,7 @@
 import { generateKeyPair, signNode } from "../core/sign.ts";
 import { uuidv7 } from "../core/uuidv7.ts";
 import type { Node } from "../core/types.ts";
-import {
-  problemNode as problemTemplate,
-  recipeNode as recipeTemplate,
-} from "./templates.ts";
+import { templateFor } from "../nodetypes/registry.ts";
 import { SqliteQueryIndex } from "../storage/index.ts";
 import { FileBlockstore } from "../storage/blockstore.ts";
 import { rebuildIndex } from "../storage/rebuild.ts";
@@ -204,15 +201,11 @@ function cmdNodeTemplate(flags: Flags): void {
   if (!keys.public_key) {
     fail(`no public_key in ${keyFile}`);
   }
-  if (type === "problem") {
-    console.log(JSON.stringify(problemTemplate(keys.public_key), null, 2));
-    return;
+  const module = templateFor(type);
+  if (!module?.template) {
+    fail(`no template for type '${type}'`);
   }
-  if (type === "recipe") {
-    console.log(JSON.stringify(recipeTemplate(keys.public_key), null, 2));
-    return;
-  }
-  fail(`no template for type '${type}'`);
+  console.log(JSON.stringify(module.template(keys.public_key), null, 2));
 }
 
 async function cmdVerify(flags: Flags): Promise<void> {

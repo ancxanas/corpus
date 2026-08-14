@@ -1,12 +1,14 @@
 import type { NodeType } from "../core/types.ts";
+import { registry } from "../nodetypes/registry.ts";
 
 const here = import.meta.dirname ?? ".";
 
-const SCHEMA_FILES: Record<NodeType, string> = {
-  Problem: "problem.json",
-  Recipe: "recipe.json",
-  Verification: "verification.json",
-};
+const SCHEMA_FILES: Record<NodeType, string> = Object.fromEntries(
+  Object.entries(registry).map(([nodeType, module]) => [
+    nodeType,
+    module.schemaFile,
+  ]),
+) as Record<NodeType, string>;
 
 const cache = new Map<NodeType, unknown>();
 

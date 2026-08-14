@@ -1,11 +1,7 @@
 import { Ajv, type ErrorObject, type ValidateFunction } from "ajv";
 import { loadSchema } from "./index.ts";
-import type { Node, NodeType } from "../core/types.ts";
-
-export interface ValidationIssue {
-  pointer: string;
-  message: string;
-}
+import type { Node, NodeType, ValidationIssue } from "../core/types.ts";
+import { registry } from "../nodetypes/registry.ts";
 
 const ajv = new Ajv({ allErrors: true, strict: false, validateSchema: false });
 const compiled = new Map<NodeType, ValidateFunction>();
@@ -54,49 +50,6 @@ function toIssues(errors: ErrorObject[]): ValidationIssue[] {
   }));
 }
 
-function crossFieldIssues(node: Node): ValidationIssue[] {
-  if (node.osk.node_type !== "Verification") {
-    return [];
-  }
-  const verification = (node.payload as {
-    verification: {
-      execution: {
-        test_suite: {
-          total: number;
-          passed: number;
-          failed: number;
-          cases: unknown[];
-        };
-      };
-    };
-  })
-    .verification;
-  const suite = verification.execution.test_suite;
-  const issues: ValidationIssue[] = [];
-  if (suite.total !== suite.passed + suite.failed) {
-    issues.push({
-      pointer: "/payload/verification/execution/test_suite/total",
-      message: "total must equal passed + failed",
-    });
-  }
-  if (suite.total !== suite.cases.length) {
-    issues.push({
-      pointer: "/payload/verification/execution/test_suite/total",
-      message: "total must equal cases.length",
-    });
-  }
-  const failCount =
-    suite.cases.filter((c) => (c as { result: string }).result === "fail")
-      .length;
-  if (failCount !== suite.failed) {
-    issues.push({
-      pointer: "/payload/verification/execution/test_suite/failed",
-      message: "failed must equal count of cases with result 'fail'",
-    });
-  }
-  return issues;
-}
-
 export async function validateNode(node: unknown): Promise<ValidationIssue[]> {
   const nodeType = (node as Node).osk?.node_type as NodeType;
   if (!nodeType) {
@@ -108,7 +61,7 @@ export async function validateNode(node: unknown): Promise<ValidationIssue[]> {
     ? []
     : toIssues(validate.errors ?? []);
   if (valid) {
-    issues.push(...crossFieldIssues(node as Node));
+    issues.push(...registry[nodeType].crossFieldChecks(node as Node));
   }
   return issues;
 }

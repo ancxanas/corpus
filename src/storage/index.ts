@@ -10,6 +10,7 @@ import {
 } from "./triggers.ts";
 import { canonicalString } from "../core/serialize.ts";
 import type { EffectiveStatus, Node, NodeType } from "../core/types.ts";
+import { isVerification, registry } from "../nodetypes/registry.ts";
 import {
   type IndexedNode,
   type IndexedVerification,
@@ -46,19 +47,24 @@ const SORT_COLUMNS: Record<string, string> = {
 function extractMeta(
   node: Node,
 ): { severity: string | null; framework_name: string | null } {
-  if (node.osk.node_type === "Problem") {
-    const problem = (node.payload as {
-      problem: {
-        severity: string;
-        environment: { framework: { name: string } };
-      };
-    }).problem;
-    return {
-      severity: problem.severity,
-      framework_name: problem.environment.framework.name,
-    };
-  }
-  return { severity: null, framework_name: null };
+  return registry[node.osk.node_type].meta(node);
+}
+
+function rowToIndexedVerification(
+  row: Record<string, unknown>,
+): IndexedVerification {
+  return {
+    receipt_cid: row.receipt_cid as string,
+    problem_cid: row.problem_cid as string,
+    solution_cid: row.solution_cid as string,
+    environment_hash: row.environment_hash as string,
+    public_key: row.public_key as string,
+    timestamp: row.timestamp as string,
+    valid_until: row.valid_until as string | null,
+    total: row.total as number,
+    passed: row.passed as number,
+    failed: row.failed as number,
+  };
 }
 
 function rowToIndexedNode(row: Record<string, unknown>): IndexedNode {
@@ -195,17 +201,10 @@ export class SqliteQueryIndex implements QueryIndex {
   }
 
   addVerification(receipt: Node, cid: string, createdAt: string): void {
-    const verification = (receipt.payload as {
-      verification: {
-        target: { problem_id: { "/": string }; solution_id: { "/": string } };
-        execution: {
-          environment_hash: string;
-          test_suite: { total: number; passed: number; failed: number };
-        };
-        timestamp: string;
-        valid_until?: string;
-      };
-    }).verification;
+    if (!isVerification(receipt)) {
+      throw new InvalidNodeError("receipt is not a Verification node");
+    }
+    const verification = receipt.payload.verification;
     const solutionCid = verification.target.solution_id["/"];
     const problemCid = verification.target.problem_id["/"];
 
@@ -319,11 +318,13 @@ export class SqliteQueryIndex implements QueryIndex {
   }
 
   precheckVerification(receipt: Node): { pointer: string; message: string }[] {
-    const verification = (receipt.payload as {
-      verification: {
-        target: { problem_id: { "/": string }; solution_id: { "/": string } };
-      };
-    }).verification;
+    if (!isVerification(receipt)) {
+      return [{
+        pointer: "/osk/node_type",
+        message: "receipt is not a Verification node",
+      }];
+    }
+    const verification = receipt.payload.verification;
     const solutionCid = verification.target.solution_id["/"];
     const problemCid = verification.target.problem_id["/"];
     const issues: { pointer: string; message: string }[] = [];
@@ -395,18 +396,7 @@ export class SqliteQueryIndex implements QueryIndex {
     const rows = this.#db.prepare(
       "SELECT * FROM verifications WHERE solution_cid = ?",
     ).all(solutionCid) as Record<string, unknown>[];
-    return rows.map((r) => ({
-      receipt_cid: r.receipt_cid as string,
-      problem_cid: r.problem_cid as string,
-      solution_cid: r.solution_cid as string,
-      environment_hash: r.environment_hash as string,
-      public_key: r.public_key as string,
-      timestamp: r.timestamp as string,
-      valid_until: r.valid_until as string | null,
-      total: r.total as number,
-      passed: r.passed as number,
-      failed: r.failed as number,
-    }));
+    return rows.map(rowToIndexedVerification);
   }
 
   search(options: SearchOptions): SearchResult {

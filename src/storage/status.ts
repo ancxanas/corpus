@@ -1,5 +1,6 @@
 import type { EffectiveStatus, Node } from "../core/types.ts";
 import type { IndexedVerification } from "./types.ts";
+import { registry } from "../nodetypes/registry.ts";
 
 export interface StatusContext {
   latestReceipt: IndexedVerification | null;
@@ -25,13 +26,7 @@ export function computeEffectiveStatus(
   if (ctx.triggerFired) {
     return "stale";
   }
-  if (node.osk.node_type === "Recipe") {
-    if (declared === "draft") {
-      return "draft";
-    }
-    return receipt ? "active" : "draft";
-  }
-  return declared;
+  return registry[node.osk.node_type].lifecycle(declared, receipt !== null);
 }
 
 function latestReceipt(receipts: IndexedVerification[]): IndexedVerification {

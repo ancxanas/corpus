@@ -1,6 +1,6 @@
 import type { IngestService } from "../storage/ingest.ts";
 import type { QueryIndex } from "../storage/index.ts";
-import type { Node, NodeType } from "../core/types.ts";
+import type { Node } from "../core/types.ts";
 import {
   ReplayUnavailableError,
   SignatureError,
@@ -11,10 +11,14 @@ import { loadSchema } from "../schema/index.ts";
 import {
   document,
   errorDocument,
-  PLURAL,
   resourceIdentifier,
   serializeResource,
 } from "./jsonapi.ts";
+import {
+  byPluralOrSingular,
+  isVerification,
+  pluralOf,
+} from "../nodetypes/registry.ts";
 import {
   extractRelationships,
   linkedCidsOf,
@@ -29,7 +33,7 @@ const ACCEPTABLE_MEDIA = new Set([
   "*/*",
   "application/*",
 ]);
-const ADVERTISED_COLLECTIONS = new Set([
+const SPEC_COLLECTIONS = [
   "problems",
   "guides",
   "recipes",
@@ -38,7 +42,9 @@ const ADVERTISED_COLLECTIONS = new Set([
   "improvements",
   "blueprints",
   "verifications",
-]);
+] as const;
+
+const ADVERTISED_COLLECTIONS = new Set<string>(SPEC_COLLECTIONS);
 
 function jsonResponse(
   body: unknown,
@@ -107,15 +113,6 @@ function notFoundResponse(): Response {
     }]),
     404,
   );
-}
-
-function pluralToNodeType(value: string): NodeType | null {
-  for (const [singular, plural] of Object.entries(PLURAL)) {
-    if (plural === value || singular === value) {
-      return singular as NodeType;
-    }
-  }
-  return null;
 }
 
 function toNodeTypeError(): Response {
@@ -201,18 +198,15 @@ async function parseBody(request: Request, limit: number): Promise<ParsedBody> {
 }
 
 function entryPoint(baseUrl: string): Record<string, unknown> {
+  const collectionLinks: Record<string, string> = {};
+  for (const name of SPEC_COLLECTIONS) {
+    collectionLinks[name] = `${baseUrl}/${name}`;
+  }
   return document(null, {
     baseUrl,
     links: {
       self: baseUrl,
-      problems: `${baseUrl}/problems`,
-      guides: `${baseUrl}/guides`,
-      recipes: `${baseUrl}/recipes`,
-      references: `${baseUrl}/references`,
-      comparisons: `${baseUrl}/comparisons`,
-      improvements: `${baseUrl}/improvements`,
-      blueprints: `${baseUrl}/blueprints`,
-      verifications: `${baseUrl}/verifications`,
+      ...collectionLinks,
       schemas: `${baseUrl}/schemas/{node_type}`,
       submit: `${baseUrl}/nodes`,
     },
@@ -430,7 +424,7 @@ export function createApp(
       );
     }
     const node = data.attributes as Node;
-    const declared = pluralToNodeType(data.type ?? "");
+    const declared = byPluralOrSingular(data.type ?? "");
     if (!declared) {
       return toNodeTypeError();
     }
@@ -499,7 +493,7 @@ export function createApp(
       );
     }
     const node = data.attributes as Node;
-    if (node.osk?.node_type !== "Verification") {
+    if (!isVerification(node)) {
       return jsonResponse(
         errorDocument([
           {
@@ -525,9 +519,7 @@ export function createApp(
         baseUrl,
         meta: {
           cid: result.cid,
-          solution_cid: (node.payload as {
-            verification: { target: { solution_id: { "/": string } } };
-          }).verification.target.solution_id["/"],
+          solution_cid: node.payload.verification.target.solution_id["/"],
         },
       }),
       201,
@@ -594,7 +586,7 @@ export function createApp(
       const m = key.match(/^filter\[(.+)\]$/);
       if (m) {
         if (m[1] === "node_type") {
-          const t = pluralToNodeType(value);
+          const t = byPluralOrSingular(value);
           if (t) {
             filter.node_type = t;
           }
@@ -604,7 +596,7 @@ export function createApp(
       }
     }
     if (collectionType) {
-      const t = pluralToNodeType(collectionType);
+      const t = byPluralOrSingular(collectionType);
       if (!t) {
         return jsonResponse(document([], { baseUrl, meta: { total: 0 } }));
       }
@@ -708,7 +700,9 @@ export function createApp(
     const versions = index.getVersions(nodeId);
     const relationship = {
       related: `${baseUrl}/nodes/by-node-id/${nodeId}/versions`,
-      data: versions.map((v) => resourceIdentifier(PLURAL[v.node_type], v.cid)),
+      data: versions.map((v) =>
+        resourceIdentifier(pluralOf(v.node_type), v.cid)
+      ),
     };
     return jsonResponse(
       document(
@@ -722,7 +716,7 @@ export function createApp(
   }
 
   async function getSchema(nodeType: string): Promise<Response> {
-    const singular = pluralToNodeType(nodeType);
+    const singular = byPluralOrSingular(nodeType);
     if (!singular) {
       return toNodeTypeError();
     }

@@ -1,7 +1,12 @@
-import { validateNode, type ValidationIssue } from "../schema/validate.ts";
+import { validateNode } from "../schema/validate.ts";
 import { verifyNodeSignature } from "../core/sign.ts";
 import { canonicalBytes } from "../core/serialize.ts";
-import type { Node, VerificationPayload } from "../core/types.ts";
+import type {
+  Node,
+  ValidationIssue,
+  VerificationPayload,
+} from "../core/types.ts";
+import { isVerification } from "../nodetypes/registry.ts";
 import type { Blockstore } from "./blockstore.ts";
 import type { QueryIndex } from "./index.ts";
 import type { IndexedNode } from "./types.ts";
@@ -137,10 +142,13 @@ export class IngestService {
     if (!verifyNodeSignature(node)) {
       throw new SignatureError();
     }
-    const verification = (node.payload as {
-      verification: { execution: { environment_hash: string } };
-    })
-      .verification;
+    if (!isVerification(node)) {
+      throw new ValidationError([{
+        pointer: "/osk/node_type",
+        message: "node must be a Verification node",
+      }]);
+    }
+    const verification = node.payload.verification;
     if (
       this.#registry &&
       !this.#registry.lookup(verification.execution.environment_hash)
@@ -156,13 +164,14 @@ export class IngestService {
       throw new ValidationError(precheck);
     }
     if (this.#replay.enforced) {
-      const verification = (node.payload as VerificationPayload).verification;
       const solution = this.#index.getNode(
-        verification.target.solution_id["/"],
+        node.payload.verification.target.solution_id["/"],
       );
-      const problem = this.#index.getNode(verification.target.problem_id["/"]);
+      const problem = this.#index.getNode(
+        node.payload.verification.target.problem_id["/"],
+      );
       const env = this.#registry?.lookup(
-        verification.execution.environment_hash,
+        node.payload.verification.execution.environment_hash,
       );
       if (!solution || !problem || !env) {
         throw new ReplayUnavailableError(
@@ -175,7 +184,10 @@ export class IngestService {
       } catch {
         throw new ReplayUnavailableError("verification execution unavailable");
       }
-      const issues = compareReplay(verification.execution.test_suite, result);
+      const issues = compareReplay(
+        node.payload.verification.execution.test_suite,
+        result,
+      );
       if (issues.length > 0) {
         throw new ValidationError(issues);
       }
