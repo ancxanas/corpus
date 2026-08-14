@@ -12,7 +12,9 @@ const BASE_ENV: Record<string, string> = {
   CORPUS_MAX_BODY_BYTES: "2048",
 };
 
-function env(overrides: Record<string, string | undefined> = {}): Record<string, string | undefined> {
+function env(
+  overrides: Record<string, string | undefined> = {},
+): Record<string, string | undefined> {
   return { ...BASE_ENV, ...overrides };
 }
 
