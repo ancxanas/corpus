@@ -1,18 +1,31 @@
-import type { Node, ProblemPayload, RecipePayload, VerificationPayload } from "../src/core/types.ts";
+import type {
+  DeprecationTrigger,
+  Node,
+  ProblemPayload,
+  RecipePayload,
+  VerificationPayload,
+} from "../src/core/types.ts";
 import { uuidv7 } from "../src/core/uuidv7.ts";
 import { signNode } from "../src/core/sign.ts";
 import { computeCid } from "../src/core/cid.ts";
 
 export function problemNode(
   pubKey: string,
-  options: { supersedesCid?: string; nodeId?: string; title?: string; solutionCids?: string[] } = {},
+  options: {
+    supersedesCid?: string;
+    nodeId?: string;
+    title?: string;
+    solutionCids?: string[];
+  } = {},
 ): Node<ProblemPayload> {
   return {
     osk: {
       version: "0.3.0",
       node_type: "Problem",
       node_id: options.nodeId ?? uuidv7(),
-      ...(options.supersedesCid ? { supersedes_cid: { "/": options.supersedesCid } } : {}),
+      ...(options.supersedesCid
+        ? { supersedes_cid: { "/": options.supersedesCid } }
+        : {}),
       knowledge_lifecycle: {
         status: "active",
         last_verified: "2026-08-14T00:00:00Z",
@@ -40,14 +53,19 @@ export function problemNode(
           framework: { name: "deno", version: "2.x" },
         },
         ...(options.solutionCids
-          ? { solutions: options.solutionCids.map((c) => ({ node: { "/": c } })) }
+          ? {
+            solutions: options.solutionCids.map((c) => ({ node: { "/": c } })),
+          }
           : {}),
       },
     },
   };
 }
 
-export function recipeNode(pubKey: string): Node<RecipePayload> {
+export function recipeNode(
+  pubKey: string,
+  options: { deprecationTriggers?: DeprecationTrigger[] } = {},
+): Node<RecipePayload> {
   return {
     osk: {
       version: "0.3.0",
@@ -56,6 +74,9 @@ export function recipeNode(pubKey: string): Node<RecipePayload> {
       knowledge_lifecycle: {
         status: "active",
         last_verified: "2026-08-14T00:00:00Z",
+        ...(options.deprecationTriggers
+          ? { deprecation_triggers: options.deprecationTriggers }
+          : {}),
       },
       attribution: { author_type: "agent", public_key: pubKey },
     },
@@ -65,7 +86,8 @@ export function recipeNode(pubKey: string): Node<RecipePayload> {
         code: {
           language: "typescript",
           framework: "deno",
-          body: "const stack = [root]; while (stack.length) { const n = stack.pop(); }",
+          body:
+            "const stack = [root]; while (stack.length) { const n = stack.pop(); }",
         },
         explanation: "An explicit stack avoids the call stack limit.",
       },

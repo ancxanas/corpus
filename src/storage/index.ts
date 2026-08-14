@@ -3,17 +3,28 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { migrate } from "./db.ts";
 import { computeConfidence, computeEffectiveStatus } from "./status.ts";
+import {
+  cachedVersionPins,
+  deprecationTriggerFired,
+  type VersionPin,
+} from "./triggers.ts";
 import { canonicalString } from "../core/serialize.ts";
 import type { EffectiveStatus, Node, NodeType } from "../core/types.ts";
-import type {
-  IndexedNode,
-  IndexedVerification,
-  SearchOptions,
-  SearchResult,
+import {
+  type IndexedNode,
+  type IndexedVerification,
+  InvalidNodeError,
+  type SearchOptions,
+  type SearchResult,
 } from "./types.ts";
+
+function isUniqueViolation(e: unknown): boolean {
+  return e instanceof Error && /UNIQUE constraint failed/i.test(e.message);
+}
 
 export interface QueryIndex {
   init(): void;
+  reset(): void;
   indexNode(node: Node, cid: string, createdAt: string): IndexedNode;
   addVerification(receipt: Node, cid: string, createdAt: string): void;
   getNode(cid: string): IndexedNode | null;
@@ -32,9 +43,16 @@ const SORT_COLUMNS: Record<string, string> = {
   confidence_score: "confidence_score",
 };
 
-function extractMeta(node: Node): { severity: string | null; framework_name: string | null } {
+function extractMeta(
+  node: Node,
+): { severity: string | null; framework_name: string | null } {
   if (node.osk.node_type === "Problem") {
-    const problem = (node.payload as { problem: { severity: string; environment: { framework: { name: string } } } }).problem;
+    const problem = (node.payload as {
+      problem: {
+        severity: string;
+        environment: { framework: { name: string } };
+      };
+    }).problem;
     return {
       severity: problem.severity,
       framework_name: problem.environment.framework.name,
@@ -67,13 +85,26 @@ function rowToIndexedNode(row: Record<string, unknown>): IndexedNode {
 export class SqliteQueryIndex implements QueryIndex {
   #db: DatabaseSync;
   #closed = false;
+  #versionPins: () => VersionPin;
 
-  constructor(path: string) {
+  constructor(path: string, options: { versionPins?: () => VersionPin } = {}) {
     mkdirSync(dirname(path), { recursive: true });
     this.#db = new DatabaseSync(path);
+    this.#versionPins = options.versionPins ?? cachedVersionPins(undefined);
+  }
+
+  #triggerFired(node: Node): boolean {
+    return deprecationTriggerFired(node, this.#versionPins());
   }
 
   init(): void {
+    migrate(this.#db);
+  }
+
+  reset(): void {
+    this.#db.exec("DROP TABLE IF EXISTS nodes");
+    this.#db.exec("DROP TABLE IF EXISTS verifications");
+    this.#db.exec("DROP TABLE IF EXISTS deprecation_triggers");
     migrate(this.#db);
   }
 
@@ -87,15 +118,27 @@ export class SqliteQueryIndex implements QueryIndex {
     try {
       let versionSeq = 1;
       if (supersededCid) {
-        const prev = db.prepare("SELECT version_seq FROM nodes WHERE cid = ?").get(supersededCid) as
-          | { version_seq: number }
+        const prev = db.prepare(
+          "SELECT version_seq, node_id FROM nodes WHERE cid = ?",
+        ).get(supersededCid) as
+          | { version_seq: number; node_id: string }
           | undefined;
-        versionSeq = prev ? prev.version_seq + 1 : 1;
+        if (!prev) {
+          throw new InvalidNodeError(
+            "supersedes_cid target does not exist in the index",
+          );
+        }
+        if (prev.node_id !== nodeId) {
+          throw new InvalidNodeError(
+            "supersedes_cid must reference a version of the same node_id",
+          );
+        }
+        versionSeq = prev.version_seq + 1;
       }
 
       const effective = computeEffectiveStatus(node, {
         latestReceipt: null,
-        triggerFired: false,
+        triggerFired: this.#triggerFired(node),
         now: createdAt,
       });
 
@@ -135,6 +178,12 @@ export class SqliteQueryIndex implements QueryIndex {
       db.exec("COMMIT;");
     } catch (e) {
       db.exec("ROLLBACK;");
+      if (isUniqueViolation(e)) {
+        const existing = this.getNode(cid);
+        if (existing) {
+          return existing;
+        }
+      }
       throw e;
     }
 
@@ -146,26 +195,35 @@ export class SqliteQueryIndex implements QueryIndex {
   }
 
   addVerification(receipt: Node, cid: string, createdAt: string): void {
-    const verification = (receipt.payload as { verification: {
-      target: { problem_id: { "/": string }; solution_id: { "/": string } };
-      execution: { environment_hash: string; test_suite: { total: number; passed: number; failed: number } };
-      timestamp: string;
-      valid_until?: string;
-    } }).verification;
+    const verification = (receipt.payload as {
+      verification: {
+        target: { problem_id: { "/": string }; solution_id: { "/": string } };
+        execution: {
+          environment_hash: string;
+          test_suite: { total: number; passed: number; failed: number };
+        };
+        timestamp: string;
+        valid_until?: string;
+      };
+    }).verification;
     const solutionCid = verification.target.solution_id["/"];
     const problemCid = verification.target.problem_id["/"];
 
     const db = this.#db;
     db.exec("BEGIN IMMEDIATE;");
     try {
-      const solution = db.prepare("SELECT author_public_key FROM nodes WHERE cid = ?").get(solutionCid) as
+      const solution = db.prepare(
+        "SELECT author_public_key FROM nodes WHERE cid = ?",
+      ).get(solutionCid) as
         | { author_public_key: string }
         | undefined;
       if (!solution) {
-        throw new Error("target solution does not exist in index");
+        throw new InvalidNodeError("target solution does not exist in index");
       }
       if (solution.author_public_key === receipt.osk.attribution.public_key) {
-        throw new Error("verifier must not verify their own solution");
+        throw new InvalidNodeError(
+          "verifier must not verify their own solution",
+        );
       }
 
       db.prepare(
@@ -191,12 +249,14 @@ export class SqliteQueryIndex implements QueryIndex {
         (a, b) => (Date.parse(a.timestamp) > Date.parse(b.timestamp) ? a : b),
         receipts[0]!,
       );
-      const nodeJson = (db.prepare("SELECT node_json FROM nodes WHERE cid = ?").get(solutionCid) as
-        | { node_json: string }).node_json;
+      const nodeJson =
+        (db.prepare("SELECT node_json FROM nodes WHERE cid = ?").get(
+          solutionCid,
+        ) as { node_json: string }).node_json;
       const recipeNode = JSON.parse(nodeJson) as Node;
       const effective = computeEffectiveStatus(recipeNode, {
         latestReceipt: latest,
-        triggerFired: false,
+        triggerFired: this.#triggerFired(recipeNode),
         now: createdAt,
       });
       db.prepare(
@@ -206,18 +266,26 @@ export class SqliteQueryIndex implements QueryIndex {
       db.exec("COMMIT;");
     } catch (e) {
       db.exec("ROLLBACK;");
+      if (isUniqueViolation(e)) {
+        return;
+      }
       throw e;
     }
   }
 
   getNode(cid: string): IndexedNode | null {
-    const row = this.#db.prepare("SELECT * FROM nodes WHERE cid = ?").get(cid) as
+    const row = this.#db.prepare("SELECT * FROM nodes WHERE cid = ?").get(
+      cid,
+    ) as
       | Record<string, unknown>
       | undefined;
     if (!row) {
       return null;
     }
-    return this.#refreshEffectiveStatus(rowToIndexedNode(row), new Date().toISOString());
+    return this.#refreshEffectiveStatus(
+      rowToIndexedNode(row),
+      new Date().toISOString(),
+    );
   }
 
   getHeadVersion(nodeId: string): IndexedNode[] {
@@ -225,7 +293,9 @@ export class SqliteQueryIndex implements QueryIndex {
       "SELECT * FROM nodes WHERE node_id = ? AND head = 1 ORDER BY created_at DESC",
     ).all(nodeId) as Record<string, unknown>[];
     const now = new Date().toISOString();
-    return rows.map((row) => this.#refreshEffectiveStatus(rowToIndexedNode(row), now));
+    return rows.map((row) =>
+      this.#refreshEffectiveStatus(rowToIndexedNode(row), now)
+    );
   }
 
   getVersions(nodeId: string): IndexedNode[] {
@@ -233,7 +303,9 @@ export class SqliteQueryIndex implements QueryIndex {
       "SELECT * FROM nodes WHERE node_id = ? ORDER BY version_seq DESC",
     ).all(nodeId) as Record<string, unknown>[];
     const now = new Date().toISOString();
-    return rows.map((row) => this.#refreshEffectiveStatus(rowToIndexedNode(row), now));
+    return rows.map((row) =>
+      this.#refreshEffectiveStatus(rowToIndexedNode(row), now)
+    );
   }
 
   getReceiptsFor(solutionCid: string): IndexedVerification[] {
@@ -241,20 +313,26 @@ export class SqliteQueryIndex implements QueryIndex {
   }
 
   hasVerification(cid: string): boolean {
-    return this.#db.prepare("SELECT 1 AS one FROM verifications WHERE receipt_cid = ?").get(cid) !== undefined;
+    return this.#db.prepare(
+      "SELECT 1 AS one FROM verifications WHERE receipt_cid = ?",
+    ).get(cid) !== undefined;
   }
 
   precheckVerification(receipt: Node): { pointer: string; message: string }[] {
-    const verification = (receipt.payload as { verification: {
-      target: { problem_id: { "/": string }; solution_id: { "/": string } };
-    } }).verification;
+    const verification = (receipt.payload as {
+      verification: {
+        target: { problem_id: { "/": string }; solution_id: { "/": string } };
+      };
+    }).verification;
     const solutionCid = verification.target.solution_id["/"];
     const problemCid = verification.target.problem_id["/"];
     const issues: { pointer: string; message: string }[] = [];
 
     const solution = this.#db.prepare(
       "SELECT author_public_key, node_type FROM nodes WHERE cid = ?",
-    ).get(solutionCid) as { author_public_key: string; node_type: string } | undefined;
+    ).get(solutionCid) as
+      | { author_public_key: string; node_type: string }
+      | undefined;
     if (!solution) {
       issues.push({
         pointer: "/payload/verification/target/solution_id",
@@ -267,7 +345,9 @@ export class SqliteQueryIndex implements QueryIndex {
       });
     }
 
-    const problem = this.#db.prepare("SELECT cid FROM nodes WHERE cid = ?").get(problemCid);
+    const problem = this.#db.prepare("SELECT cid FROM nodes WHERE cid = ?").get(
+      problemCid,
+    );
     if (!problem) {
       issues.push({
         pointer: "/payload/verification/target/problem_id",
@@ -275,7 +355,10 @@ export class SqliteQueryIndex implements QueryIndex {
       });
     }
 
-    if (solution && solution.author_public_key === receipt.osk.attribution.public_key) {
+    if (
+      solution &&
+      solution.author_public_key === receipt.osk.attribution.public_key
+    ) {
       issues.push({
         pointer: "/osk/attribution/public_key",
         message: "a verifier must not verify their own solution",
@@ -289,20 +372,20 @@ export class SqliteQueryIndex implements QueryIndex {
       return indexed;
     }
     const receipts = this.#receiptsFor(indexed.cid);
-    if (receipts.length === 0) {
-      return indexed;
-    }
-    const latest = receipts.reduce(
-      (a, b) => (Date.parse(a.timestamp) > Date.parse(b.timestamp) ? a : b),
-      receipts[0]!,
-    );
+    const latest = receipts.length > 0
+      ? receipts.reduce(
+        (a, b) => (Date.parse(a.timestamp) > Date.parse(b.timestamp) ? a : b),
+        receipts[0]!,
+      )
+      : null;
     const effective = computeEffectiveStatus(indexed.node, {
       latestReceipt: latest,
-      triggerFired: false,
+      triggerFired: this.#triggerFired(indexed.node),
       now,
     });
     if (effective !== indexed.effective_status) {
-      this.#db.prepare("UPDATE nodes SET effective_status = ? WHERE cid = ?").run(effective, indexed.cid);
+      this.#db.prepare("UPDATE nodes SET effective_status = ? WHERE cid = ?")
+        .run(effective, indexed.cid);
       return { ...indexed, effective_status: effective };
     }
     return indexed;
@@ -354,9 +437,17 @@ export class SqliteQueryIndex implements QueryIndex {
     ).get(...(params as never[])) as { n: number }).n;
     const rows = this.#db.prepare(
       `SELECT * FROM nodes ${whereSql} ${orderSql} LIMIT ? OFFSET ?`,
-    ).all(...(params as never[]), options.limit, options.offset) as Record<string, unknown>[];
+    ).all(...(params as never[]), options.limit, options.offset) as Record<
+      string,
+      unknown
+    >[];
     const now = new Date().toISOString();
-    return { data: rows.map((row) => this.#refreshEffectiveStatus(rowToIndexedNode(row), now)), total };
+    return {
+      data: rows.map((row) =>
+        this.#refreshEffectiveStatus(rowToIndexedNode(row), now)
+      ),
+      total,
+    };
   }
 
   #recomputeHeads(nodeId: string): void {

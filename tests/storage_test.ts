@@ -1,14 +1,19 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { SqliteQueryIndex } from "../src/storage/index.ts";
 import { FileBlockstore } from "../src/storage/blockstore.ts";
-import { IngestService, ValidationError, SignatureError } from "../src/storage/ingest.ts";
+import {
+  IngestService,
+  SignatureError,
+  ValidationError,
+} from "../src/storage/ingest.ts";
+import { InvalidNodeError } from "../src/storage/types.ts";
 import { generateKeyPair } from "../src/core/sign.ts";
 import {
+  cidOf,
   problemNode,
   recipeNode,
-  verificationNode,
   signed,
-  cidOf,
+  verificationNode,
 } from "./fixtures.ts";
 import type { Node } from "../src/core/types.ts";
 
@@ -30,15 +35,24 @@ async function makeEnv(): Promise<Env> {
   const dir = tempDir();
   const index = new SqliteQueryIndex(`${dir}/index.db`);
   index.init();
-  const ingest = new IngestService(new FileBlockstore({ dir: `${dir}/blocks` }), index);
+  const ingest = new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    index,
+  );
   const authorKey = generateKeyPair();
   const verifierKey = generateKeyPair();
 
-  const problem = signed(problemNode(authorKey.publicKeyHex), authorKey.secretKeyHex);
+  const problem = signed(
+    problemNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
   const problemCid = await cidOf(problem);
   const indexedProblem = await ingest.ingestNode(problem);
 
-  const recipe = signed(recipeNode(authorKey.publicKeyHex), authorKey.secretKeyHex);
+  const recipe = signed(
+    recipeNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
   const recipeCid = await cidOf(recipe);
   const indexedRecipe = await ingest.ingestNode(recipe);
 
@@ -68,7 +82,12 @@ Deno.test("ingest problem and recipe, fetch by cid", async () => {
 Deno.test("recipe with one verification gets confidence 0.5", async () => {
   const env = await makeEnv();
   const receipt = signed(
-    verificationNode(env.verifierKey.publicKeyHex, env.problemCid, env.recipeCid, "e".repeat(64)),
+    verificationNode(
+      env.verifierKey.publicKeyHex,
+      env.problemCid,
+      env.recipeCid,
+      "e".repeat(64),
+    ),
     env.verifierKey.secretKeyHex,
   );
   await env.ingest.ingestVerification(receipt);
@@ -82,11 +101,21 @@ Deno.test("two verifications with different env hashes give 0.75", async () => {
   const env = await makeEnv();
   const secondKey = generateKeyPair();
   const r1 = signed(
-    verificationNode(env.verifierKey.publicKeyHex, env.problemCid, env.recipeCid, "e".repeat(64)),
+    verificationNode(
+      env.verifierKey.publicKeyHex,
+      env.problemCid,
+      env.recipeCid,
+      "e".repeat(64),
+    ),
     env.verifierKey.secretKeyHex,
   );
   const r2 = signed(
-    verificationNode(secondKey.publicKeyHex, env.problemCid, env.recipeCid, "f".repeat(64)),
+    verificationNode(
+      secondKey.publicKeyHex,
+      env.problemCid,
+      env.recipeCid,
+      "f".repeat(64),
+    ),
     secondKey.secretKeyHex,
   );
   await env.ingest.ingestVerification(r1);
@@ -100,11 +129,21 @@ Deno.test("verifications sharing env hash count as one source", async () => {
   const env = await makeEnv();
   const secondKey = generateKeyPair();
   const r1 = signed(
-    verificationNode(env.verifierKey.publicKeyHex, env.problemCid, env.recipeCid, "e".repeat(64)),
+    verificationNode(
+      env.verifierKey.publicKeyHex,
+      env.problemCid,
+      env.recipeCid,
+      "e".repeat(64),
+    ),
     env.verifierKey.secretKeyHex,
   );
   const r2 = signed(
-    verificationNode(secondKey.publicKeyHex, env.problemCid, env.recipeCid, "e".repeat(64)),
+    verificationNode(
+      secondKey.publicKeyHex,
+      env.problemCid,
+      env.recipeCid,
+      "e".repeat(64),
+    ),
     secondKey.secretKeyHex,
   );
   await env.ingest.ingestVerification(r1);
@@ -131,7 +170,12 @@ Deno.test("failed receipt sets disputed and zero confidence", async () => {
             passed: 0,
             failed: 1,
             cases: [
-              { name: "fails", expected: "ok", actual: "crash", result: "fail" },
+              {
+                name: "fails",
+                expected: "ok",
+                actual: "crash",
+                result: "fail",
+              },
             ],
           },
         },
@@ -149,7 +193,12 @@ Deno.test("failed receipt sets disputed and zero confidence", async () => {
 Deno.test("self-verification is rejected", async () => {
   const env = await makeEnv();
   const receipt = signed(
-    verificationNode(env.authorKey.publicKeyHex, env.problemCid, env.recipeCid, "e".repeat(64)),
+    verificationNode(
+      env.authorKey.publicKeyHex,
+      env.problemCid,
+      env.recipeCid,
+      "e".repeat(64),
+    ),
     env.authorKey.secretKeyHex,
   );
   await assertRejects(
@@ -214,7 +263,10 @@ Deno.test("invalid signature is rejected", async () => {
 
 Deno.test("invalid node shape is rejected", async () => {
   const env = await makeEnv();
-  const bad = signed(problemNode(env.authorKey.publicKeyHex), env.authorKey.secretKeyHex) as Node<import("../src/core/types.ts").ProblemPayload>;
+  const bad = signed(
+    problemNode(env.authorKey.publicKeyHex),
+    env.authorKey.secretKeyHex,
+  ) as Node<import("../src/core/types.ts").ProblemPayload>;
   bad.payload.problem.symptoms = [];
   await assertRejects(
     () => env.ingest.ingestNode(bad),
@@ -225,7 +277,10 @@ Deno.test("invalid node shape is rejected", async () => {
 
 Deno.test("re-posting the same node returns the same cid", async () => {
   const env = await makeEnv();
-  const problem = signed(problemNode(env.authorKey.publicKeyHex), env.authorKey.secretKeyHex);
+  const problem = signed(
+    problemNode(env.authorKey.publicKeyHex),
+    env.authorKey.secretKeyHex,
+  );
   const first = await env.ingest.ingestNode(problem);
   const second = await env.ingest.ingestNode(problem);
   assertEquals(first.cid, second.cid);
@@ -236,12 +291,50 @@ Deno.test("re-posting the same node returns the same cid", async () => {
 Deno.test("re-posting the same receipt is idempotent", async () => {
   const env = await makeEnv();
   const receipt = signed(
-    verificationNode(env.verifierKey.publicKeyHex, env.problemCid, env.recipeCid, "e".repeat(64)),
+    verificationNode(
+      env.verifierKey.publicKeyHex,
+      env.problemCid,
+      env.recipeCid,
+      "e".repeat(64),
+    ),
     env.verifierKey.secretKeyHex,
   );
   const first = await env.ingest.ingestVerification(receipt);
   const second = await env.ingest.ingestVerification(receipt);
   assertEquals(first.cid, second.cid);
+  await Deno.remove(env.dir, { recursive: true });
+});
+
+Deno.test("concurrent duplicate posts are idempotent", async () => {
+  const env = await makeEnv();
+  const node = signed(
+    problemNode(env.authorKey.publicKeyHex, { title: "concurrent" }),
+    env.authorKey.secretKeyHex,
+  );
+  const cid = await cidOf(node);
+  const results = await Promise.all([
+    env.ingest.ingestNode(node),
+    env.ingest.ingestNode(node),
+  ]);
+  assertEquals(results[0].cid, cid);
+  assertEquals(results[1].cid, cid);
+
+  const receipt = signed(
+    verificationNode(
+      env.verifierKey.publicKeyHex,
+      env.problemCid,
+      env.recipeCid,
+      "e".repeat(64),
+    ),
+    env.verifierKey.secretKeyHex,
+  );
+  const receiptCid = await cidOf(receipt);
+  const v = await Promise.all([
+    env.ingest.ingestVerification(receipt),
+    env.ingest.ingestVerification(receipt),
+  ]);
+  assertEquals(v[0].cid, receiptCid);
+  assertEquals(v[1].cid, receiptCid);
   await Deno.remove(env.dir, { recursive: true });
 });
 
@@ -264,6 +357,111 @@ Deno.test("recipe with expired valid_until reads as stale", async () => {
   await Deno.remove(env.dir, { recursive: true });
 });
 
+Deno.test("deprecation trigger matching the pinned version sets stale", async () => {
+  const dir = tempDir();
+  const index = new SqliteQueryIndex(`${dir}/index.db`, {
+    versionPins: () => ({ deno: "3.0.0" }),
+  });
+  index.init();
+  const ingest = new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    index,
+  );
+  const authorKey = generateKeyPair();
+  const recipe = signed(
+    recipeNode(authorKey.publicKeyHex, {
+      deprecationTriggers: [{
+        type: "runtime_change",
+        scope: "deno",
+        condition: ">=3",
+        versioning_scheme: "semver",
+      }],
+    }),
+    authorKey.secretKeyHex,
+  );
+  await ingest.ingestNode(recipe);
+  const cid = await cidOf(recipe);
+  const stored = await index.getNode(cid);
+  assertEquals(stored?.effective_status, "stale");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("deprecation trigger below the pinned version stays draft", async () => {
+  const dir = tempDir();
+  const index = new SqliteQueryIndex(`${dir}/index.db`, {
+    versionPins: () => ({ deno: "2.0.0" }),
+  });
+  index.init();
+  const ingest = new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    index,
+  );
+  const authorKey = generateKeyPair();
+  const recipe = signed(
+    recipeNode(authorKey.publicKeyHex, {
+      deprecationTriggers: [{
+        type: "runtime_change",
+        scope: "deno",
+        condition: ">=3",
+        versioning_scheme: "semver",
+      }],
+    }),
+    authorKey.secretKeyHex,
+  );
+  await ingest.ingestNode(recipe);
+  const cid = await cidOf(recipe);
+  const stored = await index.getNode(cid);
+  assertEquals(stored?.effective_status, "draft");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("deprecation trigger stays stale even with a passing receipt", async () => {
+  const dir = tempDir();
+  const index = new SqliteQueryIndex(`${dir}/index.db`, {
+    versionPins: () => ({ deno: "3.0.0" }),
+  });
+  index.init();
+  const ingest = new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    index,
+  );
+  const authorKey = generateKeyPair();
+  const verifierKey = generateKeyPair();
+  const problem = signed(
+    problemNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
+  const problemCid = await cidOf(problem);
+  await ingest.ingestNode(problem);
+  const recipe = signed(
+    recipeNode(authorKey.publicKeyHex, {
+      deprecationTriggers: [{
+        type: "runtime_change",
+        scope: "deno",
+        condition: ">=3",
+        versioning_scheme: "semver",
+      }],
+    }),
+    authorKey.secretKeyHex,
+  );
+  const recipeCid = await cidOf(recipe);
+  await ingest.ingestNode(recipe);
+  const receipt = signed(
+    verificationNode(
+      verifierKey.publicKeyHex,
+      problemCid,
+      recipeCid,
+      "f".repeat(64),
+    ),
+    verifierKey.secretKeyHex,
+  );
+  await ingest.ingestVerification(receipt);
+  const stored = await index.getNode(recipeCid);
+  assertEquals(stored?.effective_status, "stale");
+  assertEquals(stored?.confidence_score, 0.5);
+  await Deno.remove(dir, { recursive: true });
+});
+
 Deno.test("version chain: new version supersedes old, one head", async () => {
   const env = await makeEnv();
   const authorKey = env.authorKey;
@@ -283,6 +481,36 @@ Deno.test("version chain: new version supersedes old, one head", async () => {
   assertEquals(v1Head, false);
   const versions = await env.index.getVersions(v2.osk.node_id);
   assertEquals(versions.length, 2);
+  await Deno.remove(env.dir, { recursive: true });
+});
+
+Deno.test("supersedes_cid targeting a missing node is rejected", async () => {
+  const env = await makeEnv();
+  const other = generateKeyPair();
+  const ghost = await cidOf(
+    signed(recipeNode(other.publicKeyHex), other.secretKeyHex),
+  );
+  const node = signed(
+    problemNode(env.authorKey.publicKeyHex, { supersedesCid: ghost }),
+    env.authorKey.secretKeyHex,
+  );
+  await assertRejects(
+    () => env.ingest.ingestNode(node),
+    InvalidNodeError,
+  );
+  await Deno.remove(env.dir, { recursive: true });
+});
+
+Deno.test("supersedes_cid crossing node_id is rejected", async () => {
+  const env = await makeEnv();
+  const node = signed(
+    problemNode(env.authorKey.publicKeyHex, { supersedesCid: env.recipeCid }),
+    env.authorKey.secretKeyHex,
+  );
+  await assertRejects(
+    () => env.ingest.ingestNode(node),
+    InvalidNodeError,
+  );
   await Deno.remove(env.dir, { recursive: true });
 });
 
@@ -318,7 +546,10 @@ Deno.test("fork: two versions supersede the same head", async () => {
 Deno.test("index failure deletes the just-written block", async () => {
   const env = await makeEnv();
   const blocksDir = `${env.dir}/blocks`;
-  const node = signed(problemNode(env.authorKey.publicKeyHex), env.authorKey.secretKeyHex);
+  const node = signed(
+    problemNode(env.authorKey.publicKeyHex),
+    env.authorKey.secretKeyHex,
+  );
   const cid = await cidOf(node);
   env.index.close();
   await assertRejects(() => env.ingest.ingestNode(node));
