@@ -318,11 +318,11 @@ async function cmdSearch(flags: Flags): Promise<void> {
 async function cmdRebuild(flags: Flags): Promise<void> {
   const root = flags["data-dir"] ?? Deno.env.get("CORPUS_DATA_DIR") ?? "data";
   const index = new SqliteQueryIndex(`${root}/corpus.db`);
-  index.init();
+  await index.init();
   const blockstore = new FileBlockstore({ dir: `${root}/blocks` });
   const count = await rebuildIndex(blockstore, index);
   console.log(`index rebuilt from ${count} blocks`);
-  index.close();
+  await index.close();
 }
 
 function printHelp(name: string): void {

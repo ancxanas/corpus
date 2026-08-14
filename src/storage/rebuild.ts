@@ -50,13 +50,13 @@ export async function rebuildIndex(
     const entry = { cid: block.cid, node };
     (node.osk.node_type === "Verification" ? receipts : nodes).push(entry);
   }
-  index.reset();
+  await index.reset();
   const now = new Date().toISOString();
   for (const { cid, node } of orderByDepth(nodes)) {
-    index.indexNode(node, cid, now);
+    await index.indexNode(node, cid, now);
   }
   for (const { cid, node } of receipts) {
-    index.addVerification(node, cid, now);
+    await index.addVerification(node, cid, now);
   }
   return blocks.length;
 }

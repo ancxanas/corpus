@@ -24,18 +24,20 @@ function isUniqueViolation(e: unknown): boolean {
 }
 
 export interface QueryIndex {
-  init(): void;
-  reset(): void;
-  indexNode(node: Node, cid: string, createdAt: string): IndexedNode;
-  addVerification(receipt: Node, cid: string, createdAt: string): void;
-  getNode(cid: string): IndexedNode | null;
-  getHeadVersion(nodeId: string): IndexedNode[];
-  getVersions(nodeId: string): IndexedNode[];
-  getReceiptsFor(solutionCid: string): IndexedVerification[];
-  hasVerification(cid: string): boolean;
-  precheckVerification(receipt: Node): { pointer: string; message: string }[];
-  search(options: SearchOptions): SearchResult;
-  close(): void;
+  init(): Promise<void>;
+  reset(): Promise<void>;
+  indexNode(node: Node, cid: string, createdAt: string): Promise<IndexedNode>;
+  addVerification(receipt: Node, cid: string, createdAt: string): Promise<void>;
+  getNode(cid: string): Promise<IndexedNode | null>;
+  getHeadVersion(nodeId: string): Promise<IndexedNode[]>;
+  getVersions(nodeId: string): Promise<IndexedNode[]>;
+  getReceiptsFor(solutionCid: string): Promise<IndexedVerification[]>;
+  hasVerification(cid: string): Promise<boolean>;
+  precheckVerification(
+    receipt: Node,
+  ): Promise<{ pointer: string; message: string }[]>;
+  search(options: SearchOptions): Promise<SearchResult>;
+  close(): Promise<void>;
 }
 
 const SORT_COLUMNS: Record<string, string> = {
@@ -103,18 +105,22 @@ export class SqliteQueryIndex implements QueryIndex {
     return deprecationTriggerFired(node, this.#versionPins());
   }
 
-  init(): void {
-    migrate(this.#db);
+  async init(): Promise<void> {
+    await migrate(this.#db);
   }
 
-  reset(): void {
+  async reset(): Promise<void> {
     this.#db.exec("DROP TABLE IF EXISTS nodes");
     this.#db.exec("DROP TABLE IF EXISTS verifications");
     this.#db.exec("DROP TABLE IF EXISTS deprecation_triggers");
-    migrate(this.#db);
+    await migrate(this.#db);
   }
 
-  indexNode(node: Node, cid: string, createdAt: string): IndexedNode {
+  async indexNode(
+    node: Node,
+    cid: string,
+    createdAt: string,
+  ): Promise<IndexedNode> {
     const nodeId = node.osk.node_id;
     const meta = extractMeta(node);
     const supersededCid = node.osk.supersedes_cid?.["/"] ?? null;
@@ -185,7 +191,7 @@ export class SqliteQueryIndex implements QueryIndex {
     } catch (e) {
       db.exec("ROLLBACK;");
       if (isUniqueViolation(e)) {
-        const existing = this.getNode(cid);
+        const existing = await this.getNode(cid);
         if (existing) {
           return existing;
         }
@@ -193,14 +199,18 @@ export class SqliteQueryIndex implements QueryIndex {
       throw e;
     }
 
-    const indexed = this.getNode(cid);
+    const indexed = await this.getNode(cid);
     if (!indexed) {
       throw new Error("indexed node disappeared");
     }
     return indexed;
   }
 
-  addVerification(receipt: Node, cid: string, createdAt: string): void {
+  async addVerification(
+    receipt: Node,
+    cid: string,
+    createdAt: string,
+  ): Promise<void> {
     if (!isVerification(receipt)) {
       throw new InvalidNodeError("receipt is not a Verification node");
     }
@@ -242,7 +252,7 @@ export class SqliteQueryIndex implements QueryIndex {
         verification.execution.test_suite.failed,
       );
 
-      const receipts = this.#receiptsFor(solutionCid);
+      const receipts = await this.#receiptsFor(solutionCid);
       const confidence = computeConfidence(receipts);
       const latest = receipts.reduce(
         (a, b) => (Date.parse(a.timestamp) > Date.parse(b.timestamp) ? a : b),
@@ -272,7 +282,7 @@ export class SqliteQueryIndex implements QueryIndex {
     }
   }
 
-  getNode(cid: string): IndexedNode | null {
+  async getNode(cid: string): Promise<IndexedNode | null> {
     const row = this.#db.prepare("SELECT * FROM nodes WHERE cid = ?").get(
       cid,
     ) as
@@ -281,43 +291,45 @@ export class SqliteQueryIndex implements QueryIndex {
     if (!row) {
       return null;
     }
-    return this.#refreshEffectiveStatus(
+    return await this.#refreshEffectiveStatus(
       rowToIndexedNode(row),
       new Date().toISOString(),
     );
   }
 
-  getHeadVersion(nodeId: string): IndexedNode[] {
+  async getHeadVersion(nodeId: string): Promise<IndexedNode[]> {
     const rows = this.#db.prepare(
       "SELECT * FROM nodes WHERE node_id = ? AND head = 1 ORDER BY created_at DESC",
     ).all(nodeId) as Record<string, unknown>[];
     const now = new Date().toISOString();
-    return rows.map((row) =>
+    return await rows.map((row) =>
       this.#refreshEffectiveStatus(rowToIndexedNode(row), now)
     );
   }
 
-  getVersions(nodeId: string): IndexedNode[] {
+  async getVersions(nodeId: string): Promise<IndexedNode[]> {
     const rows = this.#db.prepare(
       "SELECT * FROM nodes WHERE node_id = ? ORDER BY version_seq DESC",
     ).all(nodeId) as Record<string, unknown>[];
     const now = new Date().toISOString();
-    return rows.map((row) =>
+    return await rows.map((row) =>
       this.#refreshEffectiveStatus(rowToIndexedNode(row), now)
     );
   }
 
-  getReceiptsFor(solutionCid: string): IndexedVerification[] {
-    return this.#receiptsFor(solutionCid);
+  async getReceiptsFor(solutionCid: string): Promise<IndexedVerification[]> {
+    return await this.#receiptsFor(solutionCid);
   }
 
-  hasVerification(cid: string): boolean {
-    return this.#db.prepare(
+  async hasVerification(cid: string): Promise<boolean> {
+    return await this.#db.prepare(
       "SELECT 1 AS one FROM verifications WHERE receipt_cid = ?",
     ).get(cid) !== undefined;
   }
 
-  precheckVerification(receipt: Node): { pointer: string; message: string }[] {
+  async precheckVerification(
+    receipt: Node,
+  ): Promise<{ pointer: string; message: string }[]> {
     if (!isVerification(receipt)) {
       return [{
         pointer: "/osk/node_type",
@@ -329,7 +341,7 @@ export class SqliteQueryIndex implements QueryIndex {
     const problemCid = verification.target.problem_id["/"];
     const issues: { pointer: string; message: string }[] = [];
 
-    const solution = this.#db.prepare(
+    const solution = await this.#db.prepare(
       "SELECT author_public_key, node_type FROM nodes WHERE cid = ?",
     ).get(solutionCid) as
       | { author_public_key: string; node_type: string }
@@ -399,7 +411,7 @@ export class SqliteQueryIndex implements QueryIndex {
     return rows.map(rowToIndexedVerification);
   }
 
-  search(options: SearchOptions): SearchResult {
+  async search(options: SearchOptions): Promise<SearchResult> {
     const where: string[] = [];
     const params: unknown[] = [];
     const f = options.filter;
@@ -422,10 +434,10 @@ export class SqliteQueryIndex implements QueryIndex {
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const sortCol = SORT_COLUMNS[options.sort ?? ""] ?? "created_at";
     const orderSql = `ORDER BY ${sortCol} DESC`;
-    const total = (this.#db.prepare(
+    const total = (await this.#db.prepare(
       `SELECT COUNT(*) AS n FROM nodes ${whereSql}`,
     ).get(...(params as never[])) as { n: number }).n;
-    const rows = this.#db.prepare(
+    const rows = await this.#db.prepare(
       `SELECT * FROM nodes ${whereSql} ${orderSql} LIMIT ? OFFSET ?`,
     ).all(...(params as never[]), options.limit, options.offset) as Record<
       string,
@@ -461,11 +473,11 @@ export class SqliteQueryIndex implements QueryIndex {
     }
   }
 
-  close(): void {
+  async close(): Promise<void> {
     if (this.#closed) {
       return;
     }
     this.#closed = true;
-    this.#db.close();
+    await this.#db.close();
   }
 }

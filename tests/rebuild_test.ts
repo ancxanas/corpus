@@ -20,7 +20,7 @@ function tempDir(): string {
 async function buildCorpus() {
   const dir = tempDir();
   const index = new SqliteQueryIndex(`${dir}/index.db`);
-  index.init();
+  await index.init();
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),
     index,
@@ -76,7 +76,7 @@ async function buildCorpus() {
   );
   await ingest.ingestVerification(receipt2);
 
-  index.close();
+  await index.close();
   return { dir, problemCid, recipeCid, v2 };
 }
 
@@ -84,36 +84,36 @@ Deno.test("rebuild restores index, confidence, and heads", async () => {
   const built = await buildCorpus();
   const { dir, problemCid, recipeCid, v2 } = built;
   const fresh = new SqliteQueryIndex(`${dir}/index.db`);
-  fresh.init();
+  await fresh.init();
   const blockstore = new FileBlockstore({ dir: `${dir}/blocks` });
   const count = await rebuildIndex(blockstore, fresh);
   assertEquals(count, 5);
 
-  const recipe = fresh.getNode(recipeCid);
+  const recipe = await fresh.getNode(recipeCid);
   assertEquals(recipe?.confidence_score, 0.75);
   assertEquals(recipe?.effective_status, "active");
 
   const v2Cid = await cidOf(v2);
-  const v2Node = fresh.getNode(v2Cid);
+  const v2Node = await fresh.getNode(v2Cid);
   assertEquals(v2Node?.head, true);
-  const v1Node = fresh.getNode(problemCid);
+  const v1Node = await fresh.getNode(problemCid);
   assertEquals(v1Node?.head, false);
 
-  const search = fresh.search({
+  const search = await fresh.search({
     filter: { node_type: "Problem" },
     limit: 10,
     offset: 0,
   });
   assertEquals(search.total, 2);
 
-  fresh.close();
+  await fresh.close();
   await Deno.remove(dir, { recursive: true });
 });
 
 Deno.test("rebuild rejects a block whose supersedes target is missing", async () => {
   const dir = tempDir();
   const index = new SqliteQueryIndex(`${dir}/index.db`);
-  index.init();
+  await index.init();
   const blockstore = new FileBlockstore({ dir: `${dir}/blocks` });
   const authorKey = generateKeyPair();
   const other = generateKeyPair();
@@ -127,12 +127,12 @@ Deno.test("rebuild rejects a block whose supersedes target is missing", async ()
   await blockstore.put(canonicalBytes(orphan));
 
   const fresh = new SqliteQueryIndex(`${dir}/index.db`);
-  fresh.init();
+  await fresh.init();
   await assertRejects(
     () => rebuildIndex(blockstore, fresh),
     Error,
     "supersedes missing block",
   );
-  fresh.close();
+  await fresh.close();
   await Deno.remove(dir, { recursive: true });
 });

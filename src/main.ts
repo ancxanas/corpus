@@ -28,7 +28,7 @@ const host = Deno.env.get("CORPUS_HOST") ?? "0.0.0.0";
 const index = new SqliteQueryIndex(dbPath, {
   versionPins: cachedVersionPins(Deno.env.get("CORPUS_VERSIONS")),
 });
-index.init();
+await index.init();
 
 let registry: PlaygroundRegistry | null = null;
 const registryText = await Deno.readTextFile(`${root}/registry.json`).catch(
@@ -90,7 +90,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   console.log(`${signal} received: shutting down`);
   await server.shutdown();
-  index.close();
+  await index.close();
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -100,4 +100,4 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 await server.finished;
-index.close();
+await index.close();

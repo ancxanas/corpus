@@ -34,7 +34,7 @@ interface Env {
 async function makeEnv(): Promise<Env> {
   const dir = tempDir();
   const index = new SqliteQueryIndex(`${dir}/index.db`);
-  index.init();
+  await index.init();
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),
     index,
@@ -362,7 +362,7 @@ Deno.test("deprecation trigger matching the pinned version sets stale", async ()
   const index = new SqliteQueryIndex(`${dir}/index.db`, {
     versionPins: () => ({ deno: "3.0.0" }),
   });
-  index.init();
+  await index.init();
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),
     index,
@@ -391,7 +391,7 @@ Deno.test("deprecation trigger below the pinned version stays draft", async () =
   const index = new SqliteQueryIndex(`${dir}/index.db`, {
     versionPins: () => ({ deno: "2.0.0" }),
   });
-  index.init();
+  await index.init();
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),
     index,
@@ -420,7 +420,7 @@ Deno.test("deprecation trigger stays stale even with a passing receipt", async (
   const index = new SqliteQueryIndex(`${dir}/index.db`, {
     versionPins: () => ({ deno: "3.0.0" }),
   });
-  index.init();
+  await index.init();
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),
     index,
@@ -551,7 +551,7 @@ Deno.test("index failure deletes the just-written block", async () => {
     env.authorKey.secretKeyHex,
   );
   const cid = await cidOf(node);
-  env.index.close();
+  await env.index.close();
   await assertRejects(() => env.ingest.ingestNode(node));
   await assertRejects(() => Deno.stat(`${blocksDir}/${cid}.json`));
   await Deno.remove(env.dir, { recursive: true }).catch(() => {});

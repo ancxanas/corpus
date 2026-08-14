@@ -9,29 +9,29 @@ export interface RelationshipView {
   data: ResourceId[];
 }
 
-export function typeOfLinked(
+export async function typeOfLinked(
   index: QueryIndex,
   cid: string,
   fallback: string,
-): string {
-  const target = index.getNode(cid);
+): Promise<string> {
+  const target = await index.getNode(cid);
   return target ? pluralOf(target.node_type) : fallback;
 }
 
-export function extractRelationships(
+export async function extractRelationships(
   index: QueryIndex,
   node: Node,
   cid: string,
-): Record<string, RelationshipView> {
+): Promise<Record<string, RelationshipView>> {
   const result: Record<string, RelationshipView> = {};
   for (const def of registry[node.osk.node_type].relationships(node)) {
     result[def.name] = {
       related: `/nodes/${cid}/${def.name}`,
-      data: def.links.map((l) => ({
-        type: typeOfLinked(index, l.cid, l.fallback),
+      data: await Promise.all(def.links.map(async (l) => ({
+        type: await typeOfLinked(index, l.cid, l.fallback),
         id: l.cid,
         ...(l.meta ? { meta: l.meta } : {}),
-      })),
+      }))),
     };
   }
   return result;
@@ -44,13 +44,20 @@ export function linkedCidsOf(
   return registry[node.osk.node_type].linkedCids(node, relationship);
 }
 
-export function serializeWithIncludes(
+export async function serializeWithIncludes(
   index: QueryIndex,
   indexed: IndexedNode,
   baseUrl: string,
   includePaths: string[],
-): { resource: Record<string, unknown>; included: Record<string, unknown>[] } {
-  const relationships = extractRelationships(index, indexed.node, indexed.cid);
+): Promise<{
+  resource: Record<string, unknown>;
+  included: Record<string, unknown>[];
+}> {
+  const relationships = await extractRelationships(
+    index,
+    indexed.node,
+    indexed.cid,
+  );
   const resource = serializeResource(indexed, baseUrl, relationships);
   const included: Record<string, unknown>[] = [];
   const seen = new Set<string>();
@@ -61,7 +68,7 @@ export function serializeWithIncludes(
         continue;
       }
       seen.add(cid);
-      const target = index.getNode(cid);
+      const target = await index.getNode(cid);
       if (target) {
         included.push(serializeResource(target, baseUrl));
       }

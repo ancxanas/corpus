@@ -454,11 +454,12 @@ export function createApp(
       );
     }
     const indexed = await ingest.ingestNode(node);
-    const resource = serializeResource(
-      indexed,
-      baseUrl,
-      extractRelationships(index, indexed.node, indexed.cid),
+    const relationships = await extractRelationships(
+      index,
+      indexed.node,
+      indexed.cid,
     );
+    const resource = serializeResource(indexed, baseUrl, relationships);
     return jsonResponse(
       document(resource, { baseUrl, meta: { cid: indexed.cid } }),
       201,
@@ -506,13 +507,12 @@ export function createApp(
       );
     }
     const result = await ingest.ingestVerification(node);
-    const indexed = index.getNode(result.cid);
+    const indexed = await index.getNode(result.cid);
+    const relationships = indexed
+      ? await extractRelationships(index, indexed.node, indexed.cid)
+      : {};
     const resource = indexed
-      ? serializeResource(
-        indexed,
-        baseUrl,
-        extractRelationships(index, indexed.node, indexed.cid),
-      )
+      ? serializeResource(indexed, baseUrl, relationships)
       : null;
     return jsonResponse(
       document(resource, {
@@ -526,8 +526,12 @@ export function createApp(
     );
   }
 
-  function getNode(request: Request, cid: string, baseUrl: string): Response {
-    const indexed = index.getNode(cid);
+  async function getNode(
+    request: Request,
+    cid: string,
+    baseUrl: string,
+  ): Promise<Response> {
+    const indexed = await index.getNode(cid);
     if (!indexed) {
       return jsonResponse(
         errorDocument([{
@@ -542,7 +546,7 @@ export function createApp(
     const include = (params.get("include") ?? "").split(",").map((s) =>
       s.trim()
     ).filter(Boolean);
-    const { resource, included } = serializeWithIncludes(
+    const { resource, included } = await serializeWithIncludes(
       index,
       indexed,
       baseUrl,
@@ -551,12 +555,12 @@ export function createApp(
     return jsonResponse(document(resource, { baseUrl, included }));
   }
 
-  function getRelationship(
+  async function getRelationship(
     cid: string,
     name: string,
     baseUrl: string,
-  ): Response {
-    const indexed = index.getNode(cid);
+  ): Promise<Response> {
+    const indexed = await index.getNode(cid);
     if (!indexed) {
       return jsonResponse(
         errorDocument([{
@@ -568,18 +572,18 @@ export function createApp(
       );
     }
     const cids = linkedCidsOf(indexed.node, name);
-    const resources = cids
-      .map((c) => index.getNode(c))
-      .filter((n): n is NonNullable<typeof n> => n !== null)
-      .map((n) => serializeResource(n, baseUrl));
+    const nodes = (await Promise.all(cids.map((c) => index.getNode(c)))).filter(
+      (n): n is NonNullable<typeof n> => n !== null,
+    );
+    const resources = nodes.map((n) => serializeResource(n, baseUrl));
     return jsonResponse(document(resources, { baseUrl }));
   }
 
-  function searchNodes(
+  async function searchNodes(
     request: Request,
     baseUrl: string,
     collectionType?: string,
-  ): Response {
+  ): Promise<Response> {
     const params = new URL(request.url).searchParams;
     const filter: Record<string, unknown> = {};
     for (const [key, value] of params) {
@@ -609,10 +613,16 @@ export function createApp(
     const offset = Math.max(Number(params.get("page[offset]")) || 0, 0);
     const sort = (params.get("sort") ?? "-created_at").replace(/^-/, "");
 
-    const result = index.search({ filter, sort, limit, offset });
-    const resources = result.data.map((n) =>
-      serializeResource(n, baseUrl, extractRelationships(index, n.node, n.cid))
-    );
+    const result = await index.search({ filter, sort, limit, offset });
+    const resources = [];
+    for (const n of result.data) {
+      const relationships = await extractRelationships(
+        index,
+        n.node,
+        n.cid,
+      );
+      resources.push(serializeResource(n, baseUrl, relationships));
+    }
 
     const pageLinks: Record<string, string> = {
       first: "",
@@ -647,10 +657,13 @@ export function createApp(
     );
   }
 
-  function byNodeId(segments: string[], baseUrl: string): Response {
+  async function byNodeId(
+    segments: string[],
+    baseUrl: string,
+  ): Promise<Response> {
     const nodeId = segments[2]!;
     if (segments.length === 4 && segments[3] === "versions") {
-      const versions = index.getVersions(nodeId);
+      const versions = await index.getVersions(nodeId);
       if (versions.length === 0) {
         return jsonResponse(
           errorDocument([{
@@ -667,7 +680,7 @@ export function createApp(
       );
     }
 
-    const heads = index.getHeadVersion(nodeId);
+    const heads = await index.getHeadVersion(nodeId);
     if (heads.length === 0) {
       return jsonResponse(
         errorDocument([{
@@ -697,17 +710,22 @@ export function createApp(
       );
     }
     const head = heads[0]!;
-    const versions = index.getVersions(nodeId);
+    const versions = await index.getVersions(nodeId);
     const relationship = {
       related: `${baseUrl}/nodes/by-node-id/${nodeId}/versions`,
       data: versions.map((v) =>
         resourceIdentifier(pluralOf(v.node_type), v.cid)
       ),
     };
+    const relationships = await extractRelationships(
+      index,
+      head.node,
+      head.cid,
+    );
     return jsonResponse(
       document(
         serializeResource(head, baseUrl, {
-          ...extractRelationships(index, head.node, head.cid),
+          ...relationships,
           versions: relationship,
         }),
         { baseUrl },

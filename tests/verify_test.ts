@@ -34,7 +34,7 @@ function tempDir(): string {
 async function env() {
   const dir = tempDir();
   const index = new SqliteQueryIndex(`${dir}/index.db`);
-  index.init();
+  await index.init();
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),
     index,
