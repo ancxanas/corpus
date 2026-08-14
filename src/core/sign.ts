@@ -1,28 +1,68 @@
-import { createPrivateKey, createPublicKey, sign, verify, type KeyObject } from "node:crypto";
+import {
+  createPrivateKey,
+  createPublicKey,
+  type KeyObject,
+  sign,
+  verify,
+} from "node:crypto";
 import { Buffer } from "node:buffer";
 import type { Node, Osk } from "./types.ts";
 import { canonicalBytes } from "./serialize.ts";
 
 const PKCS8_PREFIX = new Uint8Array([
-  0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+  0x30,
+  0x2e,
+  0x02,
+  0x01,
+  0x00,
+  0x30,
+  0x05,
+  0x06,
+  0x03,
+  0x2b,
+  0x65,
+  0x70,
+  0x04,
+  0x22,
+  0x04,
+  0x20,
 ]);
 
 const SPKI_PREFIX = new Uint8Array([
-  0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
+  0x30,
+  0x2a,
+  0x30,
+  0x05,
+  0x06,
+  0x03,
+  0x2b,
+  0x65,
+  0x70,
+  0x03,
+  0x21,
+  0x00,
 ]);
 
 function privateKeyFromSeed(seed: Uint8Array): KeyObject {
   const der = new Uint8Array(PKCS8_PREFIX.length + seed.length);
   der.set(PKCS8_PREFIX);
   der.set(seed, PKCS8_PREFIX.length);
-  return createPrivateKey({ key: Buffer.from(der), format: "der", type: "pkcs8" });
+  return createPrivateKey({
+    key: Buffer.from(der),
+    format: "der",
+    type: "pkcs8",
+  });
 }
 
 function publicKeyFromRaw(raw: Uint8Array): KeyObject {
   const der = new Uint8Array(SPKI_PREFIX.length + raw.length);
   der.set(SPKI_PREFIX);
   der.set(raw, SPKI_PREFIX.length);
-  return createPublicKey({ key: Buffer.from(der), format: "der", type: "spki" });
+  return createPublicKey({
+    key: Buffer.from(der),
+    format: "der",
+    type: "spki",
+  });
 }
 
 export function bytesToHex(bytes: Uint8Array): string {
@@ -40,11 +80,18 @@ export function hexToBytes(hex: string): Uint8Array {
   return out;
 }
 
-export function generateKeyPair(): { publicKeyHex: string; secretKeyHex: string } {
+export function generateKeyPair(): {
+  publicKeyHex: string;
+  secretKeyHex: string;
+} {
   const secret = crypto.getRandomValues(new Uint8Array(32));
   const publicKey = createPublicKey(privateKeyFromSeed(secret));
   const spki = publicKey.export({ type: "spki", format: "der" });
-  const raw = new Uint8Array(spki.buffer, spki.byteOffset + SPKI_PREFIX.length, 32);
+  const raw = new Uint8Array(
+    spki.buffer,
+    spki.byteOffset + SPKI_PREFIX.length,
+    32,
+  );
   return {
     publicKeyHex: bytesToHex(raw),
     secretKeyHex: bytesToHex(secret),

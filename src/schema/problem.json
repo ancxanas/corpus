@@ -16,7 +16,13 @@
       "properties": {
         "problem": {
           "type": "object",
-          "required": ["title", "severity", "symptoms", "root_cause", "environment"],
+          "required": [
+            "title",
+            "severity",
+            "symptoms",
+            "root_cause",
+            "environment"
+          ],
           "properties": {
             "title": { "type": "string", "minLength": 1, "maxLength": 120 },
             "severity": { "enum": ["critical", "high", "medium", "low"] },
@@ -27,10 +33,18 @@
                 "type": "object",
                 "required": ["type", "description", "observable", "frequency"],
                 "properties": {
-                  "type": { "enum": ["runtime_behavior", "error_message", "performance_degradation"] },
+                  "type": {
+                    "enum": [
+                      "runtime_behavior",
+                      "error_message",
+                      "performance_degradation"
+                    ]
+                  },
                   "description": { "type": "string", "minLength": 1 },
                   "observable": { "type": "string", "minLength": 1 },
-                  "frequency": { "enum": ["always", "intermittent", "race_condition"] }
+                  "frequency": {
+                    "enum": ["always", "intermittent", "race_condition"]
+                  }
                 },
                 "additionalProperties": false
               }
@@ -56,7 +70,10 @@
                   "required": ["type", "versions"],
                   "properties": {
                     "type": { "type": "string", "minLength": 1 },
-                    "versions": { "type": "array", "items": { "type": "string" } }
+                    "versions": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
                   },
                   "additionalProperties": false
                 },
@@ -71,13 +88,22 @@
                 },
                 "agent_context": {
                   "type": "object",
-                  "required": ["model", "context_window_size", "context_window_used", "tool_count", "reasoning_chain_length"],
+                  "required": [
+                    "model",
+                    "context_window_size",
+                    "context_window_used",
+                    "tool_count",
+                    "reasoning_chain_length"
+                  ],
                   "properties": {
                     "model": { "type": "string", "minLength": 1 },
                     "context_window_size": { "type": "integer", "minimum": 0 },
                     "context_window_used": { "type": "integer", "minimum": 0 },
                     "tool_count": { "type": "integer", "minimum": 0 },
-                    "reasoning_chain_length": { "type": "integer", "minimum": 0 }
+                    "reasoning_chain_length": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
                   },
                   "additionalProperties": false
                 }

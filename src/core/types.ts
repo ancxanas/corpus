@@ -4,7 +4,12 @@ export type NodeType =
   | "Verification";
 
 export type LifecycleStatus = "active" | "deprecated" | "disputed" | "draft";
-export type EffectiveStatus = "draft" | "active" | "stale" | "disputed" | "deprecated";
+export type EffectiveStatus =
+  | "draft"
+  | "active"
+  | "stale"
+  | "disputed"
+  | "deprecated";
 
 export interface IpldLink {
   "/": string;

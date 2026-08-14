@@ -1,8 +1,14 @@
 import { assertEquals } from "@std/assert";
 import { validateNode } from "../src/schema/validate.ts";
-import type { Node, ProblemPayload, VerificationPayload } from "../src/core/types.ts";
+import type {
+  Node,
+  ProblemPayload,
+  VerificationPayload,
+} from "../src/core/types.ts";
 
-function baseNode(overrides: Partial<Node<ProblemPayload>> = {}): Node<ProblemPayload> {
+function baseNode(
+  overrides: Partial<Node<ProblemPayload>> = {},
+): Node<ProblemPayload> {
   return {
     osk: {
       version: "0.3.0",
@@ -170,7 +176,10 @@ Deno.test("verification with invalid env hash fails", async () => {
   const node = verificationNode();
   node.payload.verification.execution.environment_hash = "not-hex";
   const issues = await validateNode(node);
-  assertEquals(issues.some((i) => i.pointer.includes("environment_hash")), true);
+  assertEquals(
+    issues.some((i) => i.pointer.includes("environment_hash")),
+    true,
+  );
 });
 
 Deno.test("ipld link with non-CID string fails", async () => {

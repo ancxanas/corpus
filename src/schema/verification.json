@@ -51,7 +51,9 @@
                         "required": ["name", "expected", "actual", "result"],
                         "properties": {
                           "name": { "type": "string", "minLength": 1 },
-                          "input_cid": { "$ref": "corpus:defs#/$defs/ipldLink" },
+                          "input_cid": {
+                            "$ref": "corpus:defs#/$defs/ipldLink"
+                          },
                           "expected": { "type": "string" },
                           "actual": { "type": "string" },
                           "result": { "enum": ["pass", "fail"] }

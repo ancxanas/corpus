@@ -40,7 +40,9 @@
       "type": "object",
       "required": ["type", "scope", "condition"],
       "properties": {
-        "type": { "enum": ["framework_version", "language_spec", "runtime_change"] },
+        "type": {
+          "enum": ["framework_version", "language_spec", "runtime_change"]
+        },
         "scope": { "type": "string", "minLength": 1 },
         "versioning_scheme": {
           "enum": ["semver", "calver", "year", "custom"],
@@ -65,7 +67,13 @@
     },
     "osk": {
       "type": "object",
-      "required": ["version", "node_type", "node_id", "knowledge_lifecycle", "attribution"],
+      "required": [
+        "version",
+        "node_type",
+        "node_id",
+        "knowledge_lifecycle",
+        "attribution"
+      ],
       "properties": {
         "version": { "const": "0.3.0" },
         "node_type": { "type": "string" },

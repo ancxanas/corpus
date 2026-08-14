@@ -7,7 +7,10 @@ export interface StatusContext {
   now: string;
 }
 
-export function computeEffectiveStatus(node: Node, ctx: StatusContext): EffectiveStatus {
+export function computeEffectiveStatus(
+  node: Node,
+  ctx: StatusContext,
+): EffectiveStatus {
   const declared = node.osk.knowledge_lifecycle.status;
   if (declared === "deprecated") {
     return "deprecated";
@@ -32,7 +35,10 @@ export function computeEffectiveStatus(node: Node, ctx: StatusContext): Effectiv
 }
 
 function latestReceipt(receipts: IndexedVerification[]): IndexedVerification {
-  return receipts.reduce((a, b) => (Date.parse(a.timestamp) > Date.parse(b.timestamp) ? a : b));
+  return receipts.reduce((
+    a,
+    b,
+  ) => (Date.parse(a.timestamp) > Date.parse(b.timestamp) ? a : b));
 }
 
 function independentSourceCount(receipts: IndexedVerification[]): number {

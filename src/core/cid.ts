@@ -33,7 +33,9 @@ export function normalizeLinks(value: unknown): unknown {
   }
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, normalizeLinks(v)]),
+      Object.entries(value as Record<string, unknown>).map((
+        [k, v],
+      ) => [k, normalizeLinks(v)]),
     );
   }
   return value;

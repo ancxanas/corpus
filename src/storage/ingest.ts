@@ -6,7 +6,11 @@ import type { Blockstore } from "./blockstore.ts";
 import type { QueryIndex } from "./index.ts";
 import type { IndexedNode } from "./types.ts";
 import type { PlaygroundRegistry } from "../verify/registry.ts";
-import { StubReplayExecutor, type ReplayExecutor, type ReplayResult } from "../verify/replay.ts";
+import {
+  type ReplayExecutor,
+  type ReplayResult,
+  StubReplayExecutor,
+} from "../verify/replay.ts";
 
 export class ValidationError extends Error {
   issues: ValidationIssue[];
@@ -34,7 +38,10 @@ export class ReplayUnavailableError extends Error {
 
 type TestSuite = VerificationPayload["verification"]["execution"]["test_suite"];
 
-export function compareReplay(suite: TestSuite, result: ReplayResult): ValidationIssue[] {
+export function compareReplay(
+  suite: TestSuite,
+  result: ReplayResult,
+): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const pointer = "/payload/verification/execution/test_suite";
   if (result.outcome !== "pass") {
@@ -44,17 +51,32 @@ export function compareReplay(suite: TestSuite, result: ReplayResult): Validatio
     });
   }
   if (result.total !== suite.total) {
-    issues.push({ pointer, message: `replay total ${result.total} does not match claimed total ${suite.total}` });
+    issues.push({
+      pointer,
+      message:
+        `replay total ${result.total} does not match claimed total ${suite.total}`,
+    });
   }
   if (result.passed !== suite.passed) {
-    issues.push({ pointer, message: `replay passed ${result.passed} does not match claimed passed ${suite.passed}` });
+    issues.push({
+      pointer,
+      message:
+        `replay passed ${result.passed} does not match claimed passed ${suite.passed}`,
+    });
   }
   if (result.failed !== suite.failed) {
-    issues.push({ pointer, message: `replay failed ${result.failed} does not match claimed failed ${suite.failed}` });
+    issues.push({
+      pointer,
+      message:
+        `replay failed ${result.failed} does not match claimed failed ${suite.failed}`,
+    });
   }
   const claimed = new Map(suite.cases.map((c) => [c.name, c.result]));
   const replayed = new Map(result.cases.map((c) => [c.name, c.result]));
-  if (claimed.size !== replayed.size || [...claimed].some(([name, res]) => replayed.get(name) !== res)) {
+  if (
+    claimed.size !== replayed.size ||
+    [...claimed].some(([name, res]) => replayed.get(name) !== res)
+  ) {
     issues.push({
       pointer: `${pointer}/cases`,
       message: "replay cases do not match the claimed test suite",
@@ -115,12 +137,18 @@ export class IngestService {
     if (!verifyNodeSignature(node)) {
       throw new SignatureError();
     }
-    const verification = (node.payload as { verification: { execution: { environment_hash: string } } })
+    const verification = (node.payload as {
+      verification: { execution: { environment_hash: string } };
+    })
       .verification;
-    if (this.#registry && !this.#registry.lookup(verification.execution.environment_hash)) {
+    if (
+      this.#registry &&
+      !this.#registry.lookup(verification.execution.environment_hash)
+    ) {
       throw new ValidationError([{
         pointer: "/payload/verification/execution/environment_hash",
-        message: "environment hash is not registered in the playground registry",
+        message:
+          "environment hash is not registered in the playground registry",
       }]);
     }
     const precheck = this.#index.precheckVerification(node);
@@ -129,9 +157,13 @@ export class IngestService {
     }
     if (this.#replay.enforced) {
       const verification = (node.payload as VerificationPayload).verification;
-      const solution = this.#index.getNode(verification.target.solution_id["/"]);
+      const solution = this.#index.getNode(
+        verification.target.solution_id["/"],
+      );
       const problem = this.#index.getNode(verification.target.problem_id["/"]);
-      const env = this.#registry?.lookup(verification.execution.environment_hash);
+      const env = this.#registry?.lookup(
+        verification.execution.environment_hash,
+      );
       if (!solution || !problem || !env) {
         throw new ReplayUnavailableError(
           "verification execution unavailable: missing target node or environment",

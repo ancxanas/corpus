@@ -1,7 +1,16 @@
 import { assertEquals } from "@std/assert";
 import { uuidv7 } from "../src/core/uuidv7.ts";
-import { canonicalString, parseCanonicalString } from "../src/core/serialize.ts";
-import { generateKeyPair, signMessage, verifyMessage, signNode, verifyNodeSignature } from "../src/core/sign.ts";
+import {
+  canonicalString,
+  parseCanonicalString,
+} from "../src/core/serialize.ts";
+import {
+  generateKeyPair,
+  signMessage,
+  signNode,
+  verifyMessage,
+  verifyNodeSignature,
+} from "../src/core/sign.ts";
 import { computeCid } from "../src/core/cid.ts";
 import type { Node } from "../src/core/types.ts";
 
@@ -24,7 +33,11 @@ const node: Node = {
 
 Deno.test("uuidv7 is valid format", () => {
   const id = uuidv7();
-  assertEquals(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id), true);
+  assertEquals(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+      .test(id),
+    true,
+  );
 });
 
 Deno.test("uuidv7 values are unique", () => {
@@ -47,7 +60,13 @@ Deno.test("canonical serialization has sorted keys and no whitespace", () => {
   const str = canonicalString(node);
   assertEquals(str.includes(" "), false);
   assertEquals(str.includes("\n"), false);
-  const order = ["attribution", "knowledge_lifecycle", "node_id", "node_type", "version"];
+  const order = [
+    "attribution",
+    "knowledge_lifecycle",
+    "node_id",
+    "node_type",
+    "version",
+  ];
   const start = str.indexOf('"osk":');
   const end = str.indexOf("payload", start);
   const oskSlice = str.slice(start, end);
@@ -75,12 +94,21 @@ Deno.test("signature round-trip", () => {
   const msg = new TextEncoder().encode("hello corpus");
   const sig = signMessage(msg, secretKeyHex);
   assertEquals(verifyMessage(msg, sig, publicKeyHex), true);
-  assertEquals(verifyMessage(new TextEncoder().encode("tampered"), sig, publicKeyHex), false);
+  assertEquals(
+    verifyMessage(new TextEncoder().encode("tampered"), sig, publicKeyHex),
+    false,
+  );
 });
 
 Deno.test("node signature round-trip and tamper detection", () => {
   const { publicKeyHex, secretKeyHex } = generateKeyPair();
-  const keyedNode: Node = { ...node, osk: { ...node.osk, attribution: { ...node.osk.attribution, public_key: publicKeyHex } } };
+  const keyedNode: Node = {
+    ...node,
+    osk: {
+      ...node.osk,
+      attribution: { ...node.osk.attribution, public_key: publicKeyHex },
+    },
+  };
   const signed = signNode(keyedNode, secretKeyHex);
   assertEquals(verifyNodeSignature(signed), true);
   const tampered: Node = {
@@ -96,7 +124,13 @@ Deno.test("unsigned node fails verification", () => {
 
 Deno.test("signature binds node_id to payload", () => {
   const { publicKeyHex, secretKeyHex } = generateKeyPair();
-  const keyedNode: Node = { ...node, osk: { ...node.osk, attribution: { ...node.osk.attribution, public_key: publicKeyHex } } };
+  const keyedNode: Node = {
+    ...node,
+    osk: {
+      ...node.osk,
+      attribution: { ...node.osk.attribution, public_key: publicKeyHex },
+    },
+  };
   const signed = signNode(keyedNode, secretKeyHex);
   const rebound: Node = {
     ...signed,

@@ -58,7 +58,18 @@ function crossFieldIssues(node: Node): ValidationIssue[] {
   if (node.osk.node_type !== "Verification") {
     return [];
   }
-  const verification = (node.payload as { verification: { execution: { test_suite: { total: number; passed: number; failed: number; cases: unknown[] } } } })
+  const verification = (node.payload as {
+    verification: {
+      execution: {
+        test_suite: {
+          total: number;
+          passed: number;
+          failed: number;
+          cases: unknown[];
+        };
+      };
+    };
+  })
     .verification;
   const suite = verification.execution.test_suite;
   const issues: ValidationIssue[] = [];
@@ -74,7 +85,9 @@ function crossFieldIssues(node: Node): ValidationIssue[] {
       message: "total must equal cases.length",
     });
   }
-  const failCount = suite.cases.filter((c) => (c as { result: string }).result === "fail").length;
+  const failCount =
+    suite.cases.filter((c) => (c as { result: string }).result === "fail")
+      .length;
   if (failCount !== suite.failed) {
     issues.push({
       pointer: "/payload/verification/execution/test_suite/failed",
@@ -91,7 +104,9 @@ export async function validateNode(node: unknown): Promise<ValidationIssue[]> {
   }
   const validate = await compiler(nodeType);
   const valid = validate(node);
-  const issues: ValidationIssue[] = valid ? [] : toIssues(validate.errors ?? []);
+  const issues: ValidationIssue[] = valid
+    ? []
+    : toIssues(validate.errors ?? []);
   if (valid) {
     issues.push(...crossFieldIssues(node as Node));
   }
