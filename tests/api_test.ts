@@ -151,7 +151,8 @@ Deno.test("POST /nodes rejects mismatched data.type", async () => {
 });
 
 Deno.test("POST /nodes rejects Verification nodes with 422", async () => {
-  const { handler, verifierKey, problemCid, recipeCid, dir } = await makeServer();
+  const { handler, verifierKey, problemCid, recipeCid, dir } =
+    await makeServer();
   const node = signed(
     verificationNode(
       verifierKey.publicKeyHex,

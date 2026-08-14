@@ -39,7 +39,11 @@ export function extractRelationships(
   });
 
   if (node.osk.node_type === "Problem") {
-    const solutions = (node.payload as { problem: { solutions?: Array<{ node: { "/": string }; applies_to?: string }> } })
+    const solutions = (node.payload as {
+      problem: {
+        solutions?: Array<{ node: { "/": string }; applies_to?: string }>;
+      };
+    })
       .problem.solutions ?? [];
     result.solutions = {
       ...related("solutions"),
@@ -55,17 +59,29 @@ export function extractRelationships(
   }
 
   if (node.osk.node_type === "Verification") {
-    const verification = (node.payload as { verification: { target: { problem_id: { "/": string }; solution_id: { "/": string } } } })
+    const verification = (node.payload as {
+      verification: {
+        target: { problem_id: { "/": string }; solution_id: { "/": string } };
+      };
+    })
       .verification;
     result.target = {
       ...related("target"),
       data: [
         {
-          type: typeOfLinked(index, verification.target.problem_id["/"], "problems"),
+          type: typeOfLinked(
+            index,
+            verification.target.problem_id["/"],
+            "problems",
+          ),
           id: verification.target.problem_id["/"],
         },
         {
-          type: typeOfLinked(index, verification.target.solution_id["/"], "recipes"),
+          type: typeOfLinked(
+            index,
+            verification.target.solution_id["/"],
+            "recipes",
+          ),
           id: verification.target.solution_id["/"],
         },
       ],
@@ -80,14 +96,23 @@ export function linkedCidsOf(
   relationship: string,
 ): string[] {
   if (node.osk.node_type === "Problem" && relationship === "solutions") {
-    const solutions = (node.payload as { problem: { solutions?: Array<{ node: { "/": string } }> } })
+    const solutions = (node.payload as {
+      problem: { solutions?: Array<{ node: { "/": string } }> };
+    })
       .problem.solutions ?? [];
     return solutions.map((s) => s.node["/"]);
   }
   if (node.osk.node_type === "Verification" && relationship === "target") {
-    const verification = (node.payload as { verification: { target: { problem_id: { "/": string }; solution_id: { "/": string } } } })
+    const verification = (node.payload as {
+      verification: {
+        target: { problem_id: { "/": string }; solution_id: { "/": string } };
+      };
+    })
       .verification;
-    return [verification.target.problem_id["/"], verification.target.solution_id["/"]];
+    return [
+      verification.target.problem_id["/"],
+      verification.target.solution_id["/"],
+    ];
   }
   return [];
 }
