@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "corpus:defs",
+  "$defs": {
+    "ipldLink": {
+      "type": "object",
+      "required": ["/"],
+      "properties": {
+        "/": { "type": "string", "pattern": "^b[a-z2-7]{60}$" }
+      },
+      "additionalProperties": false
+    },
+    "iso8601": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ed25519Signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    },
+    "uuidv7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "attribution": {
+      "type": "object",
+      "required": ["author_type", "public_key"],
+      "properties": {
+        "author_type": { "enum": ["agent", "human", "hybrid"] },
+        "public_key": { "$ref": "#/$defs/ed25519PublicKey" },
+        "signature": { "$ref": "#/$defs/ed25519Signature" }
+      },
+      "additionalProperties": false
+    },
+    "deprecationTrigger": {
+      "type": "object",
+      "required": ["type", "scope", "condition"],
+      "properties": {
+        "type": { "enum": ["framework_version", "language_spec", "runtime_change"] },
+        "scope": { "type": "string", "minLength": 1 },
+        "versioning_scheme": {
+          "enum": ["semver", "calver", "year", "custom"],
+          "default": "semver"
+        },
+        "condition": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "knowledgeLifecycle": {
+      "type": "object",
+      "required": ["status", "last_verified"],
+      "properties": {
+        "status": { "enum": ["active", "deprecated", "disputed", "draft"] },
+        "last_verified": { "$ref": "#/$defs/iso8601" },
+        "deprecation_triggers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/deprecationTrigger" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "osk": {
+      "type": "object",
+      "required": ["version", "node_type", "node_id", "knowledge_lifecycle", "attribution"],
+      "properties": {
+        "version": { "const": "0.3.0" },
+        "node_type": { "type": "string" },
+        "node_id": { "$ref": "#/$defs/uuidv7" },
+        "supersedes_cid": { "$ref": "#/$defs/ipldLink" },
+        "knowledge_lifecycle": { "$ref": "#/$defs/knowledgeLifecycle" },
+        "attribution": { "$ref": "#/$defs/attribution" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

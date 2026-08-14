@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "corpus:recipe",
+  "type": "object",
+  "required": ["osk", "payload"],
+  "properties": {
+    "osk": {
+      "allOf": [
+        { "$ref": "corpus:defs#/$defs/osk" },
+        { "properties": { "node_type": { "const": "Recipe" } } }
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "required": ["recipe"],
+      "properties": {
+        "recipe": {
+          "type": "object",
+          "required": ["title", "code", "explanation"],
+          "properties": {
+            "title": { "type": "string", "minLength": 1 },
+            "code": {
+              "type": "object",
+              "required": ["language", "body"],
+              "properties": {
+                "language": { "type": "string", "minLength": 1 },
+                "framework": { "type": "string", "minLength": 1 },
+                "body": { "type": "string", "minLength": 1 }
+              },
+              "additionalProperties": false
+            },
+            "explanation": { "type": "string", "minLength": 1 },
+            "caveats": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["condition", "warning"],
+                "properties": {
+                  "condition": { "type": "string", "minLength": 1 },
+                  "warning": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
