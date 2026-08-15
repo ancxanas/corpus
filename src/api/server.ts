@@ -1,6 +1,7 @@
 import type { IngestService } from "../storage/ingest.ts";
 import type { NodeStore } from "../storage/node_store.ts";
 import type { Node } from "../core/types.ts";
+import { join, normalize } from "node:path";
 import {
   ReplayUnavailableError,
   SignatureError,
@@ -71,7 +72,34 @@ export interface CreateAppOptions {
   bodyLimit?: number;
   baseUrl?: string | null;
   corsOrigins?: string[];
+  webDir?: string;
   logger?: (line: string) => void;
+}
+
+const UI_INDEX = "index.html";
+
+function mimeFor(path: string): string {
+  const ext = path.split(".").pop() ?? "";
+  switch (ext) {
+    case "html":
+      return "text/html; charset=utf-8";
+    case "js":
+      return "text/javascript; charset=utf-8";
+    case "css":
+      return "text/css; charset=utf-8";
+    case "json":
+      return "application/json";
+    case "svg":
+      return "image/svg+xml";
+    case "png":
+      return "image/png";
+    case "ico":
+      return "image/x-icon";
+    case "txt":
+      return "text/plain; charset=utf-8";
+    default:
+      return "application/octet-stream";
+  }
 }
 
 export function createApp(
@@ -84,6 +112,37 @@ export function createApp(
   const baseUrlOption = options.baseUrl ?? null;
   const corsOrigins = options.corsOrigins ?? [];
   const allowAllOrigins = corsOrigins.includes("*");
+  const webDir =
+    (options.webDir ?? new URL("../web/", import.meta.url).pathname)
+      .replace(/\/+$/, "");
+
+  function serveStatic(segments: string[]): Response | null {
+    if (segments[0] !== "ui") {
+      return null;
+    }
+    const parts = segments.slice(1);
+    let relative: string;
+    try {
+      relative = decodeURIComponent(
+        parts.length === 0 ? UI_INDEX : parts.join("/"),
+      );
+    } catch {
+      return notFoundResponse();
+    }
+    const resolved = normalize(join(webDir, relative));
+    if (!resolved.startsWith(`${webDir}/`)) {
+      return notFoundResponse();
+    }
+    let body: Uint8Array;
+    try {
+      body = new Uint8Array(Deno.readFileSync(resolved));
+    } catch {
+      return notFoundResponse();
+    }
+    return new Response(body.buffer as ArrayBuffer, {
+      headers: { "Content-Type": mimeFor(resolved) },
+    });
+  }
 
   function allowedOrigin(request: Request): string | null {
     const origin = request.headers.get("origin");
@@ -162,13 +221,19 @@ export function createApp(
     method: string,
     requestId: string,
   ): Promise<Response> {
-    if (!acceptsJsonApi(request)) {
-      return notAcceptable();
-    }
     const baseUrl = (baseUrlOption ?? url.origin).replace(/\/+$/, "");
     const segments = url.pathname.split("/").filter(Boolean);
 
     try {
+      const staticResponse = serveStatic(segments);
+      if (staticResponse !== null) {
+        return staticResponse;
+      }
+
+      if (!acceptsJsonApi(request)) {
+        return notAcceptable();
+      }
+
       if (segments.length === 0 && method === "GET") {
         return jsonResponse(entryPoint(baseUrl));
       }

@@ -17,6 +17,14 @@ function tempDir(): string {
   return `/tmp/opencode/corpus-api-${crypto.randomUUID()}`;
 }
 
+async function webDirWith(): Promise<string> {
+  const dir = tempDir();
+  await Deno.mkdir(dir, { recursive: true });
+  await Deno.writeTextFile(`${dir}/index.html`, "<h1>The Corpus</h1>");
+  await Deno.writeTextFile(`${dir}/app.js`, "console.log('ui');");
+  return dir;
+}
+
 async function makeServer() {
   const dir = tempDir();
   const index = new SqliteNodeStore(`${dir}/index.db`);
@@ -692,4 +700,74 @@ Deno.test("HEAD returns empty bodies on collection and resource routes", async (
   assertEquals(node.status, 200);
   assertEquals(await node.text(), "");
   await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /ui serves the index page", async () => {
+  const { ingest, index, dir } = await makeServer();
+  const web = await webDirWith();
+  const handler = createApp(ingest, index, { webDir: web, logger: () => {} });
+  const res = await req(handler, "/ui/");
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("content-type"), "text/html; charset=utf-8");
+  assertEquals(await res.text(), "<h1>The Corpus</h1>");
+  await Deno.remove(dir, { recursive: true });
+  await Deno.remove(web, { recursive: true });
+});
+
+Deno.test("GET /ui without a trailing slash serves the index page", async () => {
+  const { ingest, index, dir } = await makeServer();
+  const web = await webDirWith();
+  const handler = createApp(ingest, index, { webDir: web, logger: () => {} });
+  const res = await req(handler, "/ui");
+  assertEquals(res.status, 200);
+  assertEquals(await res.text(), "<h1>The Corpus</h1>");
+  await Deno.remove(dir, { recursive: true });
+  await Deno.remove(web, { recursive: true });
+});
+
+Deno.test("GET /ui assets are served with the right content type", async () => {
+  const { ingest, index, dir } = await makeServer();
+  const web = await webDirWith();
+  const handler = createApp(ingest, index, { webDir: web, logger: () => {} });
+  const res = await req(handler, "/ui/app.js");
+  assertEquals(res.status, 200);
+  assertEquals(
+    res.headers.get("content-type"),
+    "text/javascript; charset=utf-8",
+  );
+  assertEquals(await res.text(), "console.log('ui');");
+  await Deno.remove(dir, { recursive: true });
+  await Deno.remove(web, { recursive: true });
+});
+
+Deno.test("missing UI assets return 404", async () => {
+  const { ingest, index, dir } = await makeServer();
+  const web = await webDirWith();
+  const handler = createApp(ingest, index, { webDir: web, logger: () => {} });
+  const res = await req(handler, "/ui/nope.js");
+  assertEquals(res.status, 404);
+  await Deno.remove(dir, { recursive: true });
+  await Deno.remove(web, { recursive: true });
+});
+
+Deno.test("encoded UI path traversal is rejected", async () => {
+  const { ingest, index, dir } = await makeServer();
+  const web = await webDirWith();
+  const handler = createApp(ingest, index, { webDir: web, logger: () => {} });
+  const res = await req(handler, "/ui/%252e%252e/secret");
+  assertEquals(res.status, 404);
+  await Deno.remove(dir, { recursive: true });
+  await Deno.remove(web, { recursive: true });
+});
+
+Deno.test("HEAD /ui/ returns headers without a body", async () => {
+  const { ingest, index, dir } = await makeServer();
+  const web = await webDirWith();
+  const handler = createApp(ingest, index, { webDir: web, logger: () => {} });
+  const res = await req(handler, "/ui/", { method: "HEAD" });
+  assertEquals(res.status, 200);
+  assertEquals(await res.text(), "");
+  assertEquals(res.headers.get("content-type"), "text/html; charset=utf-8");
+  await Deno.remove(dir, { recursive: true });
+  await Deno.remove(web, { recursive: true });
 });
