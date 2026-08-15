@@ -76,6 +76,7 @@ export const problemModule: NodeTypeModule = {
   lifecycle(declared) {
     return declared;
   },
+  relationshipNames: ["solutions"],
   relationships(node) {
     if (!isProblem(node)) {
       return [];

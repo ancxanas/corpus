@@ -415,6 +415,14 @@ function queryParameters(): Json[] {
       description: "Number of resources to skip. Defaults to 0.",
       schema: { type: "integer", minimum: 0 },
     },
+    {
+      name: "include",
+      in: "query",
+      required: false,
+      description:
+        "Comma-separated relationship names to inline: solutions, prerequisites, target.",
+      schema: { type: "string" },
+    },
   );
   return params;
 }

@@ -8,6 +8,7 @@ import {
   ValidationError,
 } from "../storage/ingest.ts";
 import { InvalidNodeError } from "../storage/types.ts";
+import type { IndexedVerification } from "../storage/types.ts";
 import { loadSchema } from "../schema/index.ts";
 import {
   document,
@@ -19,6 +20,7 @@ import {
   byPluralOrSingular,
   isVerification,
   pluralOf,
+  registry,
 } from "../nodetypes/registry.ts";
 import {
   extractRelationships,
@@ -119,6 +121,32 @@ function originFor(request: Request, trustProxy: boolean): string {
   )[0]!
     .trim();
   return `${proto}://${host}`;
+}
+
+function serializeReceipt(
+  receipt: IndexedVerification,
+  baseUrl: string,
+): Record<string, unknown> {
+  return {
+    type: "verifications",
+    id: receipt.receipt_cid,
+    links: { self: `${baseUrl}/nodes/${receipt.receipt_cid}` },
+    attributes: {
+      target: {
+        problem_id: { "/": receipt.problem_cid },
+        solution_id: { "/": receipt.solution_cid },
+      },
+      environment_hash: receipt.environment_hash,
+      public_key: receipt.public_key,
+      timestamp: receipt.timestamp,
+      valid_until: receipt.valid_until,
+      test_suite: {
+        total: receipt.total,
+        passed: receipt.passed,
+        failed: receipt.failed,
+      },
+    },
+  };
 }
 
 export function createApp(
@@ -523,13 +551,8 @@ export function createApp(
       );
     }
     const result = await ingest.ingestVerification(node);
-    const indexed = await store.getNode(result.cid);
-    const relationships = indexed
-      ? await extractRelationships(store, indexed.node, indexed.cid)
-      : {};
-    const resource = indexed
-      ? serializeResource(indexed, baseUrl, relationships)
-      : null;
+    const receipt = store.getReceipt(result.cid);
+    const resource = receipt ? serializeReceipt(receipt, baseUrl) : null;
     return jsonResponse(
       document(resource, {
         baseUrl,
@@ -611,22 +634,7 @@ export function createApp(
       );
     }
     const receipts = await store.getReceiptsFor(cid);
-    const resources = receipts.map((r) => ({
-      type: "verifications",
-      id: r.receipt_cid,
-      links: { self: `${baseUrl}/nodes/${r.receipt_cid}` },
-      attributes: {
-        target: {
-          problem_id: { "/": r.problem_cid },
-          solution_id: { "/": r.solution_cid },
-        },
-        environment_hash: r.environment_hash,
-        public_key: r.public_key,
-        timestamp: r.timestamp,
-        valid_until: r.valid_until,
-        test_suite: { total: r.total, passed: r.passed, failed: r.failed },
-      },
-    }));
+    const resources = receipts.map((r) => serializeReceipt(r, baseUrl));
     return jsonResponse(
       document(resources, { baseUrl, meta: { total: receipts.length } }),
     );
@@ -665,6 +673,9 @@ export function createApp(
     );
     const offset = Math.max(Number(params.get("page[offset]")) || 0, 0);
     const sort = (params.get("sort") ?? "-created_at").replace(/^-/, "");
+    const include = (params.get("include") ?? "").split(",").map((s) =>
+      s.trim()
+    ).filter(Boolean);
 
     const result = await store.search({ filter, sort, limit, offset });
     const resources = [];
@@ -675,6 +686,55 @@ export function createApp(
         n.cid,
       );
       resources.push(serializeResource(n, baseUrl, relationships));
+    }
+
+    const included: Record<string, unknown>[] = [];
+    if (include.length > 0) {
+      const valid = new Set<string>();
+      if (collectionType) {
+        const t = byPluralOrSingular(collectionType);
+        if (t) {
+          for (const name of registry[t].relationshipNames) {
+            valid.add(name);
+          }
+        }
+      }
+      for (const n of result.data) {
+        for (const name of registry[n.node_type].relationshipNames) {
+          valid.add(name);
+        }
+      }
+      const unsupported = include.filter((path) => !valid.has(path));
+      if (unsupported.length > 0) {
+        return jsonResponse(
+          errorDocument([
+            {
+              status: "400",
+              title: "unsupported include",
+              detail: `Unsupported include path${
+                unsupported.length > 1 ? "s" : ""
+              }: ${unsupported.join(", ")}.`,
+              source: { parameter: "include" },
+            },
+          ]),
+          400,
+        );
+      }
+      const seen = new Set<string>();
+      for (const n of result.data) {
+        for (const path of include) {
+          for (const cid of linkedCidsOf(n.node, path)) {
+            if (seen.has(cid)) {
+              continue;
+            }
+            seen.add(cid);
+            const target = await store.getNode(cid);
+            if (target) {
+              included.push(serializeResource(target, baseUrl));
+            }
+          }
+        }
+      }
     }
 
     const pageLinks: Record<string, string> = {
@@ -707,6 +767,7 @@ export function createApp(
           next: pageLinks.next || null,
           prev: pageLinks.prev || null,
         },
+        included,
         meta: { total: result.total },
       }),
     );

@@ -31,6 +31,7 @@ export interface NodeTypeModule {
   title(node: Node): string | null;
   meta(node: Node): NodeMeta;
   lifecycle(declared: LifecycleStatus, verified: boolean): EffectiveStatus;
+  relationshipNames: string[];
   relationships(node: Node): RelationshipDef[];
   linkedCids(node: Node, relationship: string): string[];
   crossFieldChecks(node: Node): ValidationIssue[];

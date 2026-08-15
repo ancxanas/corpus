@@ -26,6 +26,7 @@ export const verificationModule: NodeTypeModule = {
   lifecycle(declared) {
     return declared;
   },
+  relationshipNames: ["target"],
   relationships(node) {
     if (!isVerification(node)) {
       return [];

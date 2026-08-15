@@ -40,6 +40,7 @@ export interface NodeStore {
   getHeadVersion(nodeId: string): Promise<IndexedNode[]>;
   getVersions(nodeId: string): Promise<IndexedNode[]>;
   getReceiptsFor(solutionCid: string): Promise<IndexedVerification[]>;
+  getReceipt(receiptCid: string): IndexedVerification | null;
   hasVerification(cid: string): Promise<boolean>;
   precheckVerification(
     receipt: Node,
@@ -334,6 +335,13 @@ export class SqliteNodeStore implements NodeStore {
 
   async getReceiptsFor(solutionCid: string): Promise<IndexedVerification[]> {
     return await this.#receiptsFor(solutionCid);
+  }
+
+  getReceipt(receiptCid: string): IndexedVerification | null {
+    const row = this.#db.prepare(
+      "SELECT * FROM verifications WHERE receipt_cid = ?",
+    ).get(receiptCid) as Record<string, unknown> | undefined;
+    return row ? rowToIndexedVerification(row) : null;
   }
 
   async hasVerification(cid: string): Promise<boolean> {

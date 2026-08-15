@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { SqliteNodeStore } from "../src/storage/node_store.ts";
 import { FileBlockstore } from "../src/storage/blockstore.ts";
 import { IngestService } from "../src/storage/ingest.ts";
@@ -118,6 +118,37 @@ Deno.test("GET /nodes/{cid} returns resource with relationships", async () => {
   await Deno.remove(dir, { recursive: true });
 });
 
+Deno.test("collection include returns linked resources", async () => {
+  const { handler, recipeCid, dir } = await makeServer();
+  const res = await req(handler, "/problems?include=solutions");
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  const ids = (body.included ?? []).map((i: { id: string }) => i.id);
+  assert(ids.includes(recipeCid), "included must contain the linked recipe");
+  assertEquals(body.data[0].relationships.solutions.data[0].id, recipeCid);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("collection include rejects an unsupported path with 400", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, "/problems?include=not_a_relationship");
+  const body = await res.json();
+  assertEquals(res.status, 400);
+  assertEquals(body.errors[0].status, "400");
+  assertEquals(body.errors[0].title, "unsupported include");
+  assertEquals(body.errors[0].source.parameter, "include");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("single node include stays permissive for unknown paths", async () => {
+  const { handler, recipeCid, dir } = await makeServer();
+  const res = await req(handler, `/nodes/${recipeCid}?include=relationships`);
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assert(body.included === undefined || body.included.length === 0);
+  await Deno.remove(dir, { recursive: true });
+});
+
 Deno.test("GET /nodes/{cid} include=relationships embeds linked resources", async () => {
   const { handler, problemCid, recipeCid, dir } = await makeServer();
   const res = await req(handler, `/nodes/${problemCid}?include=solutions`);
@@ -144,6 +175,40 @@ Deno.test("POST /nodes stores a signed node and returns meta.cid", async () => {
   assertEquals(res.status, 201);
   assertEquals(typeof body.meta.cid, "string");
   assertEquals(body.data.type, "problems");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("POST /verifications returns a resource document", async () => {
+  const { handler, verifierKey, problemCid, recipeCid, dir } =
+    await makeServer();
+  const receipt = signed(
+    verificationNode(
+      verifierKey.publicKeyHex,
+      problemCid,
+      recipeCid,
+      "d".repeat(64),
+    ),
+    verifierKey.secretKeyHex,
+  );
+  const res = await req(
+    handler,
+    "/verifications",
+    postNode(
+      "verifications",
+      receipt,
+    ),
+  );
+  const body = await res.json();
+  assertEquals(res.status, 201);
+  assert(body.data, "data must not be null");
+  assertEquals(body.data.type, "verifications");
+  assertEquals(body.data.id, body.meta.cid);
+  assertEquals(body.data.links.self, `http://127.0.0.1/nodes/${body.meta.cid}`);
+  assertEquals(
+    body.data.attributes.target.solution_id["/"],
+    recipeCid,
+  );
+  assertEquals(body.data.attributes.test_suite.passed, 2);
   await Deno.remove(dir, { recursive: true });
 });
 

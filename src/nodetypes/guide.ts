@@ -53,6 +53,7 @@ export const guideModule: NodeTypeModule = {
   lifecycle(declared) {
     return declared === "draft" ? "draft" : "active";
   },
+  relationshipNames: ["prerequisites"],
   relationships(node) {
     if (!isGuide(node)) {
       return [];

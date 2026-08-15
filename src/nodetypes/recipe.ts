@@ -64,6 +64,7 @@ export const recipeModule: NodeTypeModule = {
     }
     return verified ? "active" : "draft";
   },
+  relationshipNames: ["prerequisites"],
   relationships(node) {
     if (!isRecipe(node)) {
       return [];
