@@ -14,6 +14,20 @@ const BASE_URL = Deno.env.get("CORPUS_BASE_URL") ?? "http://127.0.0.1:8000";
 const NOW = "2026-08-01T00:00:00.000Z";
 const STALE_VERIFIED_AT = "2026-05-01T00:00:00.000Z";
 const STALE_VALID_UNTIL = "2026-04-15T00:00:00.000Z";
+const V_CSV = "2026-06-20T10:00:00.000Z";
+const V_CONFIG = "2026-06-15T12:00:00.000Z";
+const V_MEM = "2026-06-22T11:00:00.000Z";
+const V_MEM_REVIEW = "2026-07-01T09:00:00.000Z";
+const V_RETRIES = "2026-07-05T08:00:00.000Z";
+const V_RETRIES2 = "2026-07-06T10:00:00.000Z";
+const V_QUEUE = "2026-07-15T14:00:00.000Z";
+const V_BINARY = "2026-07-20T16:00:00.000Z";
+const V_MEM3 = "2026-07-25T09:00:00.000Z";
+const V_CSV_PEER = "2026-07-28T09:00:00.000Z";
+
+const ENV_A = "a".repeat(64);
+const ENV_B = "b".repeat(64);
+const ENV_C = "c".repeat(64);
 
 const ID = (n: number): string =>
   `01800000-0000-7000-8000-${String(n).padStart(12, "0")}`;
@@ -22,7 +36,10 @@ function usage(): never {
   console.log(
     "usage: corpus-seed [--url URL] [--data-dir DIR]\n" +
       "  --url URL      corpus server base URL (default: CORPUS_BASE_URL or http://127.0.0.1:8000)\n" +
-      "  --data-dir DIR directory for demo keys (default: data)",
+      "  --data-dir DIR directory for the index, blocks, and demo keys (default: data)\n" +
+      "\n" +
+      "The seed wipes corpus.db* and blocks/ under --data-dir, then stores a fresh,\n" +
+      "deterministic dataset. Stop the server before seeding so the wipe succeeds.",
   );
   Deno.exit(2);
 }
@@ -147,9 +164,11 @@ function recipeNode(
   nodeId: string,
   publicKey: string,
   payload: RecipePayload["recipe"],
+  status: "active" | "deprecated" | "disputed" | "draft" = "active",
+  oskOverrides: Partial<Node["osk"]> = {},
 ): Node<RecipePayload> {
   return {
-    osk: osk(nodeId, "Recipe", publicKey, "active"),
+    osk: osk(nodeId, "Recipe", publicKey, status, oskOverrides),
     payload: { recipe: payload },
   };
 }
@@ -182,7 +201,7 @@ function verificationNode(
         },
         execution: {
           playground: "sandbox-den",
-          environment_hash: "a".repeat(64),
+          environment_hash: ENV_A,
           test_suite: {
             total: 2,
             passed: 2,
@@ -238,14 +257,27 @@ async function ingestVerification(
   console.log(`posted  verification ${cid.slice(0, 12)}`);
 }
 
+async function wipeDataDir(dataDir: string): Promise<void> {
+  for (const file of ["corpus.db", "corpus.db-wal", "corpus.db-shm"]) {
+    await Deno.remove(`${dataDir}/${file}`).catch(() => {});
+  }
+  await Deno.remove(`${dataDir}/blocks`, { recursive: true }).catch(() => {});
+  console.log(`wiped ${dataDir}/corpus.db* and ${dataDir}/blocks/`);
+}
+
 const args = flagsOf(Deno.args);
 const url = args.url.replace(/\/+$/, "");
 const authorPath = `${args.dataDir}/demo-key.json`;
 const verifierPath = `${args.dataDir}/verifier-key.json`;
 const reviewerPath = `${args.dataDir}/reviewer-key.json`;
+const peerPath = `${args.dataDir}/peer-key.json`;
+
+await wipeDataDir(args.dataDir);
+
 const author = await loadOrCreateKey(authorPath);
 const verifier = await loadOrCreateKey(verifierPath);
 const reviewer = await loadOrCreateKey(reviewerPath);
+const peer = await loadOrCreateKey(peerPath);
 
 console.log(`seeding into ${url} using keys under ${args.dataDir}`);
 
@@ -264,6 +296,9 @@ const recipeCsv = recipeNode(ID(1), author.publicKeyHex, {
   prerequisites: [
     {
       description: "The web server must expose the request body as a stream.",
+    },
+    {
+      description: "For quoted CSV fields, pair this with a real tokenizer.",
     },
   ],
   steps: [
@@ -298,6 +333,9 @@ const recipeCsv = recipeNode(ID(1), author.publicKeyHex, {
   references: [{
     title: "WHATWG Streams Standard",
     url: "https://streams.spec.whatwg.org/",
+  }, {
+    title: "MDN: ReadableStream",
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream",
   }],
 });
 
@@ -441,13 +479,229 @@ const recipeTz = recipeNode(ID(4), author.publicKeyHex, {
   }],
 });
 
+const recipeRetriesV1 = recipeNode(
+  ID(5),
+  author.publicKeyHex,
+  {
+    title: "Fixed-interval retries",
+    summary:
+      "Retry failed HTTP calls on a fixed timer, which staggers load poorly under outages.",
+    code: {
+      language: "typescript",
+      framework: "deno",
+      body:
+        "for (let attempt = 1; ; attempt++) {\n  const res = await fetch(url, opts);\n  if (res.status < 500 && res.status !== 429) return res;\n  if (attempt >= MAX_ATTEMPTS) throw new Error('retries exhausted');\n  await sleep(FIXED_MS);\n}",
+    },
+    explanation:
+      "Retry at a fixed interval, which is simple but can pile all retries onto the same instant.",
+    prerequisites: [
+      {
+        description: "The HTTP client reports response status codes.",
+      },
+    ],
+    steps: [
+      {
+        title: "Retry on retryable statuses",
+        body:
+          "Treat 5xx and 429 as retryable, then wait a fixed delay between attempts.",
+      },
+      {
+        title: "Cap the attempt count",
+        body:
+          "Fail loudly after a maximum so the caller can surface an outage.",
+      },
+    ],
+    verification:
+      "A brief upstream outage recovers, but a fleet of clients all retry in lockstep.",
+    caveats: [
+      {
+        condition: "many clients fail at once",
+        warning: "fixed intervals synchronize retries into a thundering herd.",
+      },
+    ],
+    tags: ["http", "retries", "backoff"],
+    references: [{
+      title: "RFC 9110: Retry-After",
+      url: "https://www.rfc-editor.org/rfc/rfc9110#section-10.2.3",
+    }],
+  },
+  "deprecated",
+);
+
+const rRetriesV1 = await ingest("recipes", recipeRetriesV1);
+
+const recipeRetriesV2 = recipeNode(
+  ID(5),
+  author.publicKeyHex,
+  {
+    title: "Exponential backoff with jitter",
+    summary:
+      "Double the delay on each retry and add random jitter, so a fleet of clients never retries in lockstep.",
+    code: {
+      language: "typescript",
+      framework: "deno",
+      body:
+        "for (let attempt = 1; ; attempt++) {\n  const res = await fetch(url, opts);\n  if (res.status < 500 && res.status !== 429) return res;\n  if (attempt > MAX_ATTEMPTS) throw new Error('retries exhausted');\n  const base = BASE_MS * 2 ** (attempt - 1);\n  const jitter = Math.floor(Math.random() * base * 0.2);\n  await sleep(Math.min(base + jitter, MAX_BACKOFF_MS));\n}",
+    },
+    explanation:
+      "Exponential growth spaces out attempts and jitter breaks synchronization across clients.",
+    prerequisites: [
+      {
+        description: "A predictable failure mode that needs a bounded wait.",
+      },
+    ],
+    steps: [
+      {
+        title: "Grow the delay geometrically",
+        body:
+          "Double the base delay after each failed attempt, clamped to a maximum.",
+      },
+      {
+        title: "Add jitter to each wait",
+        body:
+          "Randomize the delay within a fraction so simultaneous clients diverge.",
+      },
+      {
+        title: "Respect Retry-After when present",
+        body:
+          "Prefer the server's Retry-After header over your own backoff schedule.",
+      },
+    ],
+    verification:
+      "A 60-second upstream outage clears in under 10 seconds of wall time with at most 6 attempts.",
+    caveats: [
+      {
+        condition: "the upstream returns 429 with Retry-After",
+        warning: "honor the header; it may exceed your computed backoff.",
+      },
+    ],
+    tags: ["http", "retries", "backoff", "jitter"],
+    references: [{
+      title: "AWS: Exponential Backoff and Jitter",
+      url:
+        "https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/",
+    }, {
+      title: "RFC 9110: 429 Too Many Requests",
+      url: "https://www.rfc-editor.org/rfc/rfc9110#section-15.5.32",
+    }],
+  },
+  "active",
+  { supersedes_cid: { "/": rRetriesV1 } },
+);
+
+const recipeQueue = recipeNode(ID(6), author.publicKeyHex, {
+  title: "Bounded async queue with backpressure",
+  summary:
+    "Cap the number of in-flight items and block producers when the queue is full, so workers never starve memory.",
+  code: {
+    language: "typescript",
+    framework: "deno",
+    body:
+      "const queue = new AsyncQueue(CAPACITY);\nfor await (const item of source) {\n  await queue.push(item); // blocks when full -> backpressure\n}\nawait queue.close();\nfor await (const item of queue.reader()) {\n  await worker(item);\n}",
+  },
+  explanation:
+    "A bounded queue plus an await on push gives the producer backpressure, keeping memory and concurrency predictable.",
+  prerequisites: [
+    {
+      description: "Workers must not hold shared mutable state.",
+    },
+    {
+      description:
+        "Bound worker memory pools first so each worker's retained set stays small.",
+    },
+  ],
+  steps: [
+    {
+      title: "Create a queue with a capacity cap",
+      body:
+        "Bound the number of pending items so the queue cannot grow without limit.",
+    },
+    {
+      title: "Await push to apply backpressure",
+      body:
+        "When the queue is full, the producer awaits instead of buffering more input.",
+      code: "await queue.push(item);",
+    },
+    {
+      title: "Drain in order on the consumer side",
+      body: "Read items in FIFO order and process them one worker at a time.",
+    },
+  ],
+  verification:
+    "A producer that outruns workers never exceeds the queue cap; the workers catch up steadily.",
+  caveats: [
+    {
+      condition: "a single slow worker stalls the queue",
+      warning:
+        "backpressure pauses the producer, which may be the desired behavior.",
+    },
+  ],
+  tags: ["queue", "backpressure", "workers", "concurrency"],
+  references: [{
+    title: "WHATWG Streams Standard",
+    url: "https://streams.spec.whatwg.org/",
+  }],
+});
+
+const recipeBinary = recipeNode(ID(7), author.publicKeyHex, {
+  title: "Binary-safe buffer handling",
+  summary:
+    "Process upload bytes as Uint8Array instead of decoding to text, so binary payloads survive intact.",
+  code: {
+    language: "typescript",
+    framework: "deno",
+    body:
+      "const bytes = new Uint8Array(await response.arrayBuffer());\nconst header = bytes.slice(0, 4);\nif (header[0] !== 0x89) throw new Error('not a valid header');",
+  },
+  explanation:
+    "Text decoders replace invalid sequences with U+FFFD. Operating on bytes preserves the payload exactly.",
+  prerequisites: [
+    {
+      description: "The server must accept binary request bodies.",
+    },
+  ],
+  steps: [
+    {
+      title: "Read the raw bytes",
+      body:
+        "Use arrayBuffer or a byte stream instead of decoding the body to a string.",
+      code: "const bytes = new Uint8Array(await response.arrayBuffer());",
+    },
+    {
+      title: "Inspect the magic header",
+      body:
+        "Validate binary formats by their magic bytes rather than textual content.",
+    },
+  ],
+  verification:
+    "A round-trip of a 10MB binary upload returns byte-identical content.",
+  caveats: [
+    {
+      condition: "the format mixes text and binary",
+      warning: "decode only the fields that are genuinely textual.",
+    },
+  ],
+  tags: ["binary", "buffer", "encoding"],
+  references: [{
+    title: "MDN: Uint8Array",
+    url:
+      "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array",
+  }, {
+    title: "MDN: TextDecoder",
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/TextDecoder",
+  }],
+});
+
 const rCsv = await ingest("recipes", recipeCsv);
 const rMem = await ingest("recipes", recipeMem);
 const rConfig = await ingest("recipes", recipeConfig);
 const rTz = await ingest("recipes", recipeTz);
+const rRetriesV2 = await ingest("recipes", recipeRetriesV2);
+const rQueue = await ingest("recipes", recipeQueue);
+const rBinary = await ingest("recipes", recipeBinary);
 
 const problemCrash = problemNode(
-  ID(5),
+  ID(8),
   author.publicKeyHex,
   {
     title: "Web server crashes on large CSV upload",
@@ -500,7 +754,7 @@ const problemCrash = problemNode(
 );
 
 const problemLeakV1 = problemNode(
-  ID(6),
+  ID(9),
   author.publicKeyHex,
   {
     title: "Memory usage grows unbounded under sustained load",
@@ -549,7 +803,7 @@ const problemLeakV1 = problemNode(
 const pLeakV1 = await ingest("problems", problemLeakV1);
 
 const problemLeakV2 = problemNode(
-  ID(6),
+  ID(9),
   author.publicKeyHex,
   {
     title: "Memory usage grows unbounded under sustained load",
@@ -599,7 +853,7 @@ const problemLeakV2 = problemNode(
 );
 
 const problemNull = problemNode(
-  ID(8),
+  ID(10),
   author.publicKeyHex,
   {
     title: "Null pointer on empty config file",
@@ -651,8 +905,8 @@ const problemNull = problemNode(
   "draft",
 );
 
-const problemDeprecated = problemNode(
-  ID(9),
+const problemLegacy = problemNode(
+  ID(11),
   author.publicKeyHex,
   {
     title: "Legacy endpoint returns wrong status codes",
@@ -703,7 +957,7 @@ const problemDeprecated = problemNode(
 );
 
 const problemTz = problemNode(
-  ID(10),
+  ID(12),
   author.publicKeyHex,
   {
     title: "Scheduler drifts across timezones",
@@ -754,54 +1008,382 @@ const problemTz = problemNode(
   },
 );
 
+const problemRetries = problemNode(
+  ID(13),
+  author.publicKeyHex,
+  {
+    title: "Retries hammer the upstream API on 429",
+    severity: "high",
+    summary:
+      "A fleet of clients retries fixed-interval, so a rate-limited upstream collapses under a synchronized retry storm.",
+    impact:
+      "The upstream API throttles the account, batches fail in waves, and the incident spreads to unrelated tenants.",
+    symptoms: [
+      {
+        type: "runtime_behavior",
+        description: "all clients retry at the same instant",
+        observable:
+          "upstream logs show periodic 429 spikes every fixed interval",
+        frequency: "race_condition",
+      },
+    ],
+    reproduction: [
+      {
+        title: "Simulate a rate-limited upstream",
+        body: "Route the service at a stub that returns 429 for 30 seconds.",
+      },
+      {
+        title: "Start several clients at once",
+        body:
+          "Launch five clients against the stub and observe them all retry on the same tick.",
+      },
+    ],
+    diagnosis: [
+      {
+        title: "Correlate timestamps",
+        body:
+          "Overlay client retry logs with upstream 429 counts; the spikes line up exactly.",
+      },
+    ],
+    root_cause: {
+      mechanism: "fixed-interval retries synchronize across clients",
+      causal_chain: ["retries", "lockstep", "thundering herd", "429"],
+    },
+    environment: {
+      runtime: { type: "node", versions: ["22.x"] },
+      framework: { name: "deno", version: "2.x" },
+    },
+    solutions: [{ node: { "/": rRetriesV2 } }],
+    tags: ["http", "retries", "backoff", "429"],
+    references: [{
+      title: "RFC 9110: Retry-After",
+      url: "https://www.rfc-editor.org/rfc/rfc9110#section-10.2.3",
+    }],
+  },
+);
+
+const problemDeadlock = problemNode(
+  ID(14),
+  author.publicKeyHex,
+  {
+    title: "Worker pool deadlocks when queue fills",
+    severity: "critical",
+    summary:
+      "When the task queue reaches capacity, producers wait forever and workers wait for producers, stalling the pool.",
+    impact:
+      "Jobs time out silently, the pool shows full CPU at zero progress, and operators must recycle the process.",
+    symptoms: [
+      {
+        type: "runtime_behavior",
+        description: "pool stalls with no progress",
+        observable: "pending count is frozen at the queue cap for minutes",
+        frequency: "intermittent",
+      },
+    ],
+    reproduction: [
+      {
+        title: "Flood the pool",
+        body: "Enqueue more tasks than the pool can drain before the timeout.",
+      },
+      {
+        title: "Wait past the stall",
+        body:
+          "The pending counter stays pinned at capacity and no task completes.",
+      },
+    ],
+    diagnosis: [
+      {
+        title: "Dump the task graph",
+        body:
+          "A task dump shows producers blocked on a full queue while workers wait on producers.",
+      },
+    ],
+    root_cause: {
+      mechanism:
+        "an unbounded producer waits on a full queue with no backpressure",
+      causal_chain: ["queue", "capacity", "backpressure", "deadlock"],
+    },
+    environment: {
+      runtime: { type: "node", versions: ["22.x"] },
+      framework: { name: "deno", version: "2.x" },
+    },
+    solutions: [{ node: { "/": rQueue } }],
+    tags: ["queue", "deadlock", "concurrency"],
+    references: [{
+      title: "WHATWG Streams Standard",
+      url: "https://streams.spec.whatwg.org/",
+    }],
+  },
+);
+
+const problemBinary = problemNode(
+  ID(15),
+  author.publicKeyHex,
+  {
+    title: "Binary payload corrupted by text decoding",
+    severity: "high",
+    summary:
+      "Uploaded binary files pass through a text decoder, which rewrites invalid sequences and corrupts the payload.",
+    impact:
+      "Stored files fail integrity checks, users receive corrupted downloads, and support cannot reproduce byte diffs.",
+    symptoms: [
+      {
+        type: "error_message",
+        description: "downloaded files fail checksum",
+        observable: "sha256 of the round-tripped file differs from the upload",
+        frequency: "always",
+      },
+    ],
+    reproduction: [
+      {
+        title: "Upload a binary fixture",
+        body: "Send a 10MB file with random bytes through the ingestion path.",
+      },
+      {
+        title: "Download and hash it",
+        body: "Compare the sha256 of the downloaded file to the original.",
+      },
+    ],
+    diagnosis: [
+      {
+        title: "Intercept the decode",
+        body:
+          "Log the payload at the text-decode step; invalid sequences have become U+FFFD.",
+      },
+    ],
+    root_cause: {
+      mechanism: "the pipeline decodes bytes to a string before writing them",
+      causal_chain: ["decode", "utf8", "replacement", "corruption"],
+    },
+    environment: {
+      runtime: { type: "node", versions: ["22.x"] },
+      framework: { name: "deno", version: "2.x" },
+    },
+    solutions: [{ node: { "/": rBinary } }],
+    tags: ["binary", "encoding", "integrity"],
+    references: [{
+      title: "MDN: TextDecoder",
+      url: "https://developer.mozilla.org/en-US/docs/Web/API/TextDecoder",
+    }],
+  },
+  "disputed",
+);
+
 const pCrash = await ingest("problems", problemCrash);
 const pLeakV2 = await ingest("problems", problemLeakV2);
 const pNull = await ingest("problems", problemNull);
-await ingest("problems", problemDeprecated);
+await ingest("problems", problemLegacy);
 const pTz = await ingest("problems", problemTz);
+const pRetries = await ingest("problems", problemRetries);
+const pDeadlock = await ingest("problems", problemDeadlock);
+const pBinary = await ingest("problems", problemBinary);
 
-const vCsv = verificationNode(ID(11), verifier.publicKeyHex, pCrash, rCsv);
-const vMem = verificationNode(ID(12), verifier.publicKeyHex, pLeakV2, rMem);
-const vMemReview = verificationNode(
-  ID(13),
-  reviewer.publicKeyHex,
-  pLeakV2,
-  rMem,
-);
+const vCsv = verificationNode(ID(24), verifier.publicKeyHex, pCrash, rCsv, {
+  timestamp: V_CSV,
+});
 const vConfig = verificationNode(
-  ID(14),
+  ID(25),
   verifier.publicKeyHex,
   pNull,
   rConfig,
   {
+    timestamp: V_CONFIG,
     execution: {
       playground: "sandbox-den",
-      environment_hash: "b".repeat(64),
+      environment_hash: ENV_A,
       test_suite: {
         total: 2,
         passed: 1,
         failed: 1,
         cases: [
-          { name: "small", expected: "ok", actual: "ok", result: "pass" },
-          { name: "empty", expected: "ok", actual: "throw", result: "fail" },
+          { name: "present", expected: "ok", actual: "ok", result: "pass" },
+          { name: "missing", expected: "ok", actual: "throw", result: "fail" },
         ],
       },
     },
   },
 );
-const vTz = verificationNode(ID(15), verifier.publicKeyHex, pTz, rTz, {
+const vMem = verificationNode(ID(26), verifier.publicKeyHex, pLeakV2, rMem, {
+  timestamp: V_MEM,
+});
+const vMemReview = verificationNode(
+  ID(27),
+  reviewer.publicKeyHex,
+  pLeakV2,
+  rMem,
+  {
+    timestamp: V_MEM_REVIEW,
+    execution: {
+      playground: "sandbox-den",
+      environment_hash: ENV_B,
+      test_suite: {
+        total: 2,
+        passed: 2,
+        failed: 0,
+        cases: [
+          { name: "small", expected: "ok", actual: "ok", result: "pass" },
+          { name: "large", expected: "ok", actual: "ok", result: "pass" },
+        ],
+      },
+    },
+  },
+);
+const vTz = verificationNode(ID(28), verifier.publicKeyHex, pTz, rTz, {
   timestamp: STALE_VERIFIED_AT,
   valid_until: STALE_VALID_UNTIL,
+});
+const vRetries = verificationNode(
+  ID(29),
+  verifier.publicKeyHex,
+  pRetries,
+  rRetriesV2,
+  {
+    timestamp: V_RETRIES,
+    execution: {
+      playground: "sandbox-den",
+      environment_hash: ENV_A,
+      test_suite: {
+        total: 3,
+        passed: 3,
+        failed: 0,
+        cases: [
+          { name: "no-error", expected: "200", actual: "200", result: "pass" },
+          {
+            name: "429-then-200",
+            expected: "200",
+            actual: "200",
+            result: "pass",
+          },
+          {
+            name: "exhausted",
+            expected: "throw",
+            actual: "throw",
+            result: "pass",
+          },
+        ],
+      },
+    },
+  },
+);
+const vRetries2 = verificationNode(
+  ID(30),
+  reviewer.publicKeyHex,
+  pRetries,
+  rRetriesV2,
+  {
+    timestamp: V_RETRIES2,
+    execution: {
+      playground: "sandbox-den",
+      environment_hash: ENV_B,
+      test_suite: {
+        total: 2,
+        passed: 2,
+        failed: 0,
+        cases: [
+          { name: "small", expected: "ok", actual: "ok", result: "pass" },
+          { name: "large", expected: "ok", actual: "ok", result: "pass" },
+        ],
+      },
+    },
+  },
+);
+const vQueue = verificationNode(ID(31), peer.publicKeyHex, pDeadlock, rQueue, {
+  timestamp: V_QUEUE,
+  execution: {
+    playground: "sandbox-den",
+    environment_hash: ENV_C,
+    test_suite: {
+      total: 3,
+      passed: 3,
+      failed: 0,
+      cases: [
+        { name: "below-cap", expected: "ok", actual: "ok", result: "pass" },
+        { name: "at-cap", expected: "block", actual: "block", result: "pass" },
+        {
+          name: "drain",
+          expected: "fifo",
+          actual: "fifo",
+          result: "pass",
+        },
+      ],
+    },
+  },
+});
+const vBinary = verificationNode(ID(32), peer.publicKeyHex, pBinary, rBinary, {
+  timestamp: V_BINARY,
+  execution: {
+    playground: "sandbox-den",
+    environment_hash: ENV_C,
+    test_suite: {
+      total: 2,
+      passed: 1,
+      failed: 1,
+      cases: [
+        {
+          name: "valid-header",
+          expected: "ok",
+          actual: "ok",
+          result: "pass",
+        },
+        {
+          name: "utf8-corrupted",
+          expected: "ok",
+          actual: "corrupted",
+          result: "fail",
+        },
+      ],
+    },
+  },
+});
+const vMem3 = verificationNode(ID(33), peer.publicKeyHex, pLeakV2, rMem, {
+  timestamp: V_MEM3,
+  execution: {
+    playground: "sandbox-den",
+    environment_hash: ENV_C,
+    test_suite: {
+      total: 2,
+      passed: 2,
+      failed: 0,
+      cases: [
+        { name: "small", expected: "ok", actual: "ok", result: "pass" },
+        { name: "large", expected: "ok", actual: "ok", result: "pass" },
+      ],
+    },
+  },
+});
+const vCsvPeer = verificationNode(ID(34), peer.publicKeyHex, pCrash, rCsv, {
+  timestamp: V_CSV_PEER,
+  execution: {
+    playground: "sandbox-den",
+    environment_hash: ENV_C,
+    test_suite: {
+      total: 2,
+      passed: 2,
+      failed: 0,
+      cases: [
+        { name: "small", expected: "ok", actual: "ok", result: "pass" },
+        { name: "large", expected: "ok", actual: "ok", result: "pass" },
+      ],
+    },
+  },
 });
 
 const vCsvCid = await computeCid(signNode(vCsv, verifier.secretKeyHex));
 const vTzCid = await computeCid(signNode(vTz, verifier.secretKeyHex));
+const vMemCid = await computeCid(signNode(vMem, verifier.secretKeyHex));
+const vMem3Cid = await computeCid(signNode(vMem3, peer.secretKeyHex));
 
 await ingestVerification(vCsv, verifier.secretKeyHex);
+await ingestVerification(vConfig, verifier.secretKeyHex);
 await ingestVerification(vMem, verifier.secretKeyHex);
 await ingestVerification(vMemReview, reviewer.secretKeyHex);
-await ingestVerification(vConfig, verifier.secretKeyHex);
 await ingestVerification(vTz, verifier.secretKeyHex);
+await ingestVerification(vRetries, verifier.secretKeyHex);
+await ingestVerification(vRetries2, reviewer.secretKeyHex);
+await ingestVerification(vQueue, peer.secretKeyHex);
+await ingestVerification(vBinary, peer.secretKeyHex);
+await ingestVerification(vMem3, peer.secretKeyHex);
+await ingestVerification(vCsvPeer, peer.secretKeyHex);
 
 const guideStreaming = guideNode(ID(16), author.publicKeyHex, {
   title: "Streaming data through a memory-constrained service",
@@ -961,8 +1543,144 @@ const guideTime = guideNode(ID(18), author.publicKeyHex, {
   tags: ["time", "timezones", "cron"],
 });
 
+const guideRetries = guideNode(ID(19), author.publicKeyHex, {
+  title: "Building reliable retry logic",
+  summary:
+    "How to retry failed HTTP calls without turning a small outage into a fleet-wide retry storm.",
+  epistemic_status: "heuristic",
+  sections: [
+    {
+      heading: "Exponential backoff beats fixed intervals",
+      claim:
+        "Doubling the delay on each attempt spreads retries and clears an outage in fewer total attempts.",
+      depth: "intermediate",
+      verification: {
+        type: "source_attestation",
+        attested_source:
+          "https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/",
+        result: "confirmed",
+      },
+    },
+    {
+      heading: "Jitter breaks synchronized retry waves",
+      claim:
+        "Adding random jitter prevents a fleet from retrying at the same instant and re-triggering the outage.",
+      depth: "intermediate",
+      verification: {
+        type: "source_attestation",
+        attested_source:
+          "https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/",
+        result: "confirmed",
+      },
+    },
+    {
+      heading: "Honor Retry-After",
+      claim:
+        "Servers signal how long to wait via the Retry-After header; respecting it beats a guessed schedule.",
+      depth: "beginner",
+      verification: {
+        type: "source_attestation",
+        attested_source:
+          "https://www.rfc-editor.org/rfc/rfc9110#section-10.2.3",
+        result: "confirmed",
+      },
+    },
+  ],
+  prerequisites: [
+    {
+      node: { "/": pRetries },
+      required_depth: "beginner",
+    },
+    {
+      node: { "/": rRetriesV2 },
+      required_depth: "beginner",
+    },
+  ],
+  caveats: [
+    {
+      condition: "the upstream returns 429 with Retry-After",
+      warning: "honor the header and skip your own backoff for that attempt.",
+    },
+    {
+      condition: "retries make calls non-idempotent",
+      warning:
+        "only retry idempotent requests, or guard the handler with an idempotency key.",
+    },
+  ],
+  tags: ["http", "retries", "backoff"],
+});
+
+const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
+  title: "Diagnosing memory leaks in long-running services",
+  summary:
+    "A deeper guide to finding retention bugs with heap snapshots, bounded pools, and verification receipts.",
+  epistemic_status: "heuristic",
+  sections: [
+    {
+      heading: "Differential heap snapshots localize retention",
+      claim:
+        "Comparing two heap snapshots an hour apart shows which object classes retained the most memory.",
+      depth: "advanced",
+      verification: {
+        type: "source_attestation",
+        attested_source: "https://nodejs.org/api/heap_profiler.html",
+        result: "confirmed",
+      },
+    },
+    {
+      heading: "Bounded pools cap worker growth",
+      claim:
+        "A fixed-size eviction pool keeps per-worker retained objects bounded under sustained load.",
+      depth: "intermediate",
+      verification: {
+        type: "demonstration",
+        demonstration_cid: { "/": rMem },
+        playground_receipt: { "/": vMemCid },
+        result: "confirmed",
+      },
+    },
+    {
+      heading: "Independent receipts confirm the fix",
+      claim:
+        "Three independent receipts for the pool recipe support a confidence score of 0.875.",
+      depth: "beginner",
+      verification: {
+        type: "demonstration",
+        demonstration_cid: { "/": rMem },
+        playground_receipt: { "/": vMem3Cid },
+        result: "confirmed",
+      },
+    },
+  ],
+  prerequisites: [
+    {
+      node: { "/": pLeakV2 },
+      required_depth: "beginner",
+    },
+    {
+      node: { "/": rMem },
+      required_depth: "beginner",
+    },
+  ],
+  caveats: [
+    {
+      condition: "snapshots only cover JS-managed memory",
+      warning: "native buffers may still grow; sample process rss as well.",
+    },
+    {
+      condition: "receipts come from a replay sandbox",
+      warning: "they verify the recipe, not your production traffic shape.",
+    },
+  ],
+  tags: ["memory", "leaks", "heap", "diagnosis"],
+});
+
 await ingest("guides", guideStreaming);
 await ingest("guides", guideConfidence);
 await ingest("guides", guideTime);
+await ingest("guides", guideRetries);
+await ingest("guides", guideLeaks);
 
-console.log("seed complete");
+console.log(
+  "seed complete: 8 recipes, 9 problems, 5 guides, 11 verifications",
+);
