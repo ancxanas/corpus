@@ -2,6 +2,8 @@ import { assert, assertEquals } from "@std/assert";
 import { SqliteNodeStore } from "../src/storage/node_store.ts";
 import { FileBlockstore } from "../src/storage/blockstore.ts";
 import { IngestService } from "../src/storage/ingest.ts";
+import { PlaygroundRegistry } from "../src/execution/registry.ts";
+import { TrustedStubReplayExecutor } from "../src/execution/replay.ts";
 import { generateKeyPair } from "../src/core/sign.ts";
 import { createApp } from "../src/api/server.ts";
 import type { Node, ProblemPayload } from "../src/core/types.ts";
@@ -28,14 +30,27 @@ async function webDirWith(): Promise<string> {
 
 async function makeServer() {
   const dir = tempDir();
-  const index = new SqliteNodeStore(`${dir}/index.db`);
+  const authorKey = generateKeyPair();
+  const verifierKey = generateKeyPair();
+  const index = new SqliteNodeStore(`${dir}/index.db`, {
+    trustedKeys: [verifierKey.publicKeyHex],
+  });
   await index.init();
+  const registry = new PlaygroundRegistry(
+    ["a", "b", "d", "e"].map((letter) => ({
+      environment_hash: letter.repeat(64),
+      playground: "sandbox-den",
+      platform: "linux",
+      version: "1.0",
+      config_hash: `cfg-${letter}`,
+    })),
+  );
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),
     index,
+    registry,
+    new TrustedStubReplayExecutor(),
   );
-  const authorKey = generateKeyPair();
-  const verifierKey = generateKeyPair();
 
   const recipe = signed(
     recipeNode(authorKey.publicKeyHex),
@@ -62,7 +77,10 @@ async function makeServer() {
   );
   await ingest.ingestVerification(receipt);
 
-  const handler = createApp(ingest, index, { logger: () => {} });
+  const handler = createApp(ingest, index, {
+    logger: () => {},
+    registry,
+  });
   return {
     handler,
     index,
@@ -1114,4 +1132,126 @@ Deno.test("HEAD /ui/ returns headers without a body", async () => {
   assertEquals(res.headers.get("content-type"), "text/html; charset=utf-8");
   await Deno.remove(dir, { recursive: true });
   await Deno.remove(web, { recursive: true });
+});
+
+Deno.test("receipt resource exposes replay status and verifier reputation", async () => {
+  const { handler, verifierKey, problemCid, recipeCid, dir } =
+    await makeServer();
+  const receipt = signed(
+    verificationNode(
+      verifierKey.publicKeyHex,
+      problemCid,
+      recipeCid,
+      "a".repeat(64),
+    ),
+    verifierKey.secretKeyHex,
+  );
+  const res = await req(
+    handler,
+    "/verifications",
+    postNode("verifications", receipt),
+  );
+  const body = await res.json();
+  assertEquals(res.status, 201);
+  assertEquals(body.data.attributes.server_replayed, true);
+  assertEquals(body.data.attributes.replayed_by, "trusted-stub");
+  assertEquals(typeof body.data.attributes.replayed_at, "string");
+  assertEquals(body.data.attributes.environment.playground, "sandbox-den");
+  assertEquals(body.data.meta.verifier.key, verifierKey.publicKeyHex);
+  assertEquals(body.data.meta.verifier.trusted, true);
+  assertEquals(body.data.meta.verifier.weight, 1.0);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("POST /verifications rate-limits a key", async () => {
+  const dir = tempDir();
+  const index = new SqliteNodeStore(`${dir}/index.db`);
+  await index.init();
+  const registry = new PlaygroundRegistry([{
+    environment_hash: "a".repeat(64),
+    playground: "sandbox-den",
+    platform: "linux",
+    version: "1.0",
+    config_hash: "cfg-a",
+  }]);
+  const ingest = new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    index,
+    registry,
+    new TrustedStubReplayExecutor(),
+  );
+  const authorKey = generateKeyPair();
+  const verifierKey = generateKeyPair();
+  const recipe = signed(
+    recipeNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
+  const recipeCid = await cidOf(recipe);
+  await ingest.ingestNode(recipe);
+  const problem = signed(
+    problemNode(authorKey.publicKeyHex, { solutionCids: [recipeCid] }),
+    authorKey.secretKeyHex,
+  );
+  const problemCid = await cidOf(problem);
+  await ingest.ingestNode(problem);
+  const handler = createApp(ingest, index, {
+    verificationRateLimit: 2,
+    logger: () => {},
+  });
+  const statuses: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    const receipt = signed(
+      verificationNode(
+        verifierKey.publicKeyHex,
+        problemCid,
+        recipeCid,
+        "a".repeat(64),
+      ),
+      verifierKey.secretKeyHex,
+    );
+    const res = await req(
+      handler,
+      "/verifications",
+      postNode("verifications", receipt),
+    );
+    statuses.push(res.status);
+    if (res.status === 429) {
+      assertEquals(res.headers.get("retry-after"), "3600");
+    }
+  }
+  assertEquals(statuses, [201, 201, 429]);
+  await index.close();
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("fresh untrusted keys get zero weight and cannot raise confidence", async () => {
+  const { handler, problemCid, recipeCid, dir } = await makeServer();
+  for (const envLetter of ["b", "d"]) {
+    const fresh = generateKeyPair();
+    const receipt = signed(
+      verificationNode(
+        fresh.publicKeyHex,
+        problemCid,
+        recipeCid,
+        envLetter.repeat(64),
+      ),
+      fresh.secretKeyHex,
+    );
+    const res = await req(
+      handler,
+      "/verifications",
+      postNode("verifications", receipt),
+    );
+    const body = await res.json();
+    assertEquals(res.status, 201);
+    assertEquals(body.data.meta.verifier.trusted, false);
+    assertEquals(body.data.meta.verifier.weight, 0);
+  }
+  const res = await req(handler, `/nodes/${recipeCid}`);
+  const body = await res.json();
+  assertEquals(body.data.meta.confidence_score, 0.5);
+  assertEquals(body.data.meta.provenance.has_trusted_verifier, true);
+  assertEquals(body.data.meta.provenance.replayed_count, 3);
+  assertEquals(body.data.meta.provenance.distinct_keys, 3);
+  await Deno.remove(dir, { recursive: true });
 });

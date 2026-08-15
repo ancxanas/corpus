@@ -1,5 +1,5 @@
 import type { EffectiveStatus, Node } from "../core/types.ts";
-import type { IndexedVerification } from "./types.ts";
+import type { IndexedVerification, VerifierMetrics } from "./types.ts";
 import { registry } from "../nodetypes/registry.ts";
 
 export interface StatusContext {
@@ -36,37 +36,26 @@ function latestReceipt(receipts: IndexedVerification[]): IndexedVerification {
   ) => (Date.parse(a.timestamp) > Date.parse(b.timestamp) ? a : b));
 }
 
-function independentSourceCount(receipts: IndexedVerification[]): number {
-  const n = receipts.length;
-  const parent = Array.from({ length: n }, (_, i) => i);
-  const find = (i: number): number => {
-    while (parent[i] !== i) {
-      parent[i] = parent[parent[i]!]!;
-      i = parent[i]!;
-    }
-    return i;
-  };
-  const union = (a: number, b: number): void => {
-    const ra = find(a);
-    const rb = find(b);
-    if (ra !== rb) {
-      parent[rb] = ra;
-    }
-  };
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      if (
-        receipts[i]!.public_key === receipts[j]!.public_key ||
-        receipts[i]!.environment_hash === receipts[j]!.environment_hash
-      ) {
-        union(i, j);
-      }
-    }
-  }
-  return new Set(receipts.map((_, i) => find(i))).size;
+export function earnedKeyWeight(metrics: VerifierMetrics, now: string): number {
+  const ageDays = metrics.first_seen
+    ? Math.max(
+      0,
+      (Date.parse(now) - Date.parse(metrics.first_seen)) / 86_400_000,
+    )
+    : 0;
+  const age = 0.4 * Math.min(ageDays / 90, 1);
+  const cross = 0.3 * Math.min(metrics.cross_verified_count / 3, 1);
+  const authored = 0.3 * Math.min(metrics.authored_count / 5, 1);
+  return Math.min(1, age + cross + authored);
 }
 
-export function computeConfidence(receipts: IndexedVerification[]): number {
+const MAX_UNTRUSTED_SOURCES = 2;
+
+export function computeConfidence(
+  receipts: IndexedVerification[],
+  keyWeights: Map<string, number>,
+  hasTrustedVerifier: boolean,
+): number {
   if (receipts.length === 0) {
     return 0.0;
   }
@@ -74,9 +63,13 @@ export function computeConfidence(receipts: IndexedVerification[]): number {
   if (latest.failed > 0) {
     return 0.0;
   }
-  const sources = independentSourceCount(receipts);
-  if (sources === 1) {
-    return 0.5;
+  const keys = new Set(receipts.map((r) => r.public_key));
+  let sources = 0;
+  for (const key of keys) {
+    sources += keyWeights.get(key) ?? 0;
+  }
+  if (!hasTrustedVerifier) {
+    sources = Math.min(sources, MAX_UNTRUSTED_SOURCES);
   }
   return 1.0 - Math.pow(0.5, sources);
 }

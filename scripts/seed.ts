@@ -1458,7 +1458,7 @@ const guideConfidence = guideNode(ID(17), author.publicKeyHex, {
     {
       heading: "Sources must be independent",
       claim:
-        "Two receipts from the same author or the same environment count as one source.",
+        "Only receipts the server replayed count, and each distinct key counts once.",
       depth: "intermediate",
       verification: {
         type: "source_attestation",

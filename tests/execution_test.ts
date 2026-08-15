@@ -13,6 +13,7 @@ import {
   type ReplayResult,
   SandboxReplayExecutor,
   StubReplayExecutor,
+  TrustedStubReplayExecutor,
 } from "../src/execution/replay.ts";
 import {
   computeConfidence,
@@ -33,14 +34,16 @@ function tempDir(): string {
 
 async function env() {
   const dir = tempDir();
-  const index = new SqliteNodeStore(`${dir}/index.db`);
+  const authorKey = generateKeyPair();
+  const verifierKey = generateKeyPair();
+  const index = new SqliteNodeStore(`${dir}/index.db`, {
+    trustedKeys: [verifierKey.publicKeyHex],
+  });
   await index.init();
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),
     index,
   );
-  const authorKey = generateKeyPair();
-  const verifierKey = generateKeyPair();
 
   const problem = signed(
     problemNode(authorKey.publicKeyHex),
@@ -133,6 +136,7 @@ Deno.test("registry accepts registered environment hash", async () => {
     new FileBlockstore({ dir: `${e.dir}/strict-blocks` }),
     e.index,
     registry,
+    new TrustedStubReplayExecutor(),
   );
   const receipt = signed(
     verificationNode(
@@ -168,6 +172,7 @@ Deno.test("stub replay executor returns pass", async () => {
 
 class FakeReplay implements ReplayExecutor {
   readonly enforced = true;
+  readonly label = "fake";
 
   constructor(private result: () => ReplayResult) {}
 
@@ -223,6 +228,30 @@ Deno.test("enforced replay matching the claim accepts the receipt", async () => 
   assertEquals(typeof result.cid, "string");
   const recipe = await e.index.getNode(e.recipeCid);
   assertEquals(recipe?.confidence_score, 0.5);
+  const stored = e.index.getReceipt(result.cid);
+  assertEquals(stored?.server_replayed, true);
+  assertEquals(stored?.replayed_by, "fake");
+  assertEquals(typeof stored?.replayed_at, "string");
+  await Deno.remove(e.dir, { recursive: true });
+});
+
+Deno.test("stub replay stores the receipt as un-replayed", async () => {
+  const e = await env();
+  const receipt = signed(
+    verificationNode(
+      e.verifierKey.publicKeyHex,
+      e.problemCid,
+      e.recipeCid,
+      "e".repeat(64),
+    ),
+    e.verifierKey.secretKeyHex,
+  );
+  const result = await e.ingest.ingestVerification(receipt);
+  const stored = e.index.getReceipt(result.cid);
+  assertEquals(stored?.server_replayed, false);
+  assertEquals(stored?.replayed_by, "stub");
+  const recipe = await e.index.getNode(e.recipeCid);
+  assertEquals(recipe?.confidence_score, 0.0);
   await Deno.remove(e.dir, { recursive: true });
 });
 
@@ -323,45 +352,77 @@ function receipt(overrides: Partial<IndexedVerification>): IndexedVerification {
     total: 2,
     passed: 2,
     failed: 0,
+    server_replayed: false,
+    replayed_at: null,
+    replayed_by: null,
     ...overrides,
   };
 }
 
-Deno.test("confidence: no receipts 0.0, one source 0.5, two sources 0.75", () => {
-  assertEquals(computeConfidence([]), 0.0);
-  assertEquals(computeConfidence([receipt({})]), 0.5);
-  const independent = computeConfidence([
-    receipt({ environment_hash: "e".repeat(64) }),
-    receipt({ environment_hash: "f".repeat(64), public_key: "k2" }),
-  ]);
-  assertEquals(independent, 0.75);
-  assertEquals(computeConfidence([receipt({ failed: 1 })]), 0.0);
+Deno.test("confidence: no receipts 0.0, one key 0.5, two keys 0.75", () => {
+  assertEquals(computeConfidence([], new Map(), false), 0.0);
+  assertEquals(
+    computeConfidence([receipt({})], new Map([["k", 1]]), false),
+    0.5,
+  );
+  assertEquals(
+    computeConfidence(
+      [
+        receipt({ public_key: "k1" }),
+        receipt({ public_key: "k2" }),
+      ],
+      new Map([["k1", 1], ["k2", 1]]),
+      false,
+    ),
+    0.75,
+  );
+  assertEquals(
+    computeConfidence([receipt({ failed: 1 })], new Map([["k", 1]]), false),
+    0.0,
+  );
 });
 
-Deno.test("confidence: same key different env counts one source", () => {
-  const score = computeConfidence([
-    receipt({ environment_hash: "e".repeat(64) }),
-    receipt({ environment_hash: "f".repeat(64) }),
-  ]);
-  assertEquals(score, 0.5);
+Deno.test("confidence: key weight scales the source count", () => {
+  const score = computeConfidence(
+    [receipt({})],
+    new Map([["k", 0.5]]),
+    false,
+  );
+  assertEquals(score, 1 - Math.pow(0.5, 0.5));
+  assertEquals(
+    computeConfidence([receipt({})], new Map([["k", 0]]), false),
+    0.0,
+  );
 });
 
-Deno.test("confidence: same env different keys counts one source", () => {
-  const score = computeConfidence([
-    receipt({ public_key: "k" }),
+Deno.test("confidence: caps at two untrusted sources", () => {
+  const receipts = [
+    receipt({ public_key: "k1" }),
     receipt({ public_key: "k2" }),
+    receipt({ public_key: "k3" }),
+    receipt({ public_key: "k4" }),
+  ];
+  const weights = new Map([
+    ["k1", 1],
+    ["k2", 1],
+    ["k3", 1],
+    ["k4", 1],
   ]);
-  assertEquals(score, 0.5);
+  assertEquals(computeConfidence(receipts, weights, false), 0.75);
 });
 
-Deno.test("confidence: chain of shared envs and keys counts one source", () => {
-  const score = computeConfidence([
-    receipt({ public_key: "k1", environment_hash: "e".repeat(64) }),
-    receipt({ public_key: "k2", environment_hash: "e".repeat(64) }),
-    receipt({ public_key: "k2", environment_hash: "f".repeat(64) }),
-    receipt({ public_key: "k3", environment_hash: "f".repeat(64) }),
+Deno.test("confidence: trusted verifier lifts the cap", () => {
+  const receipts = [
+    receipt({ public_key: "k1" }),
+    receipt({ public_key: "k2" }),
+    receipt({ public_key: "k3" }),
+  ];
+  const weights = new Map([
+    ["k1", 1],
+    ["k2", 1],
+    ["k3", 1],
   ]);
-  assertEquals(score, 0.5);
+  assertEquals(computeConfidence(receipts, weights, true), 0.875);
 });
 
 Deno.test("effective_status: valid_until expiry makes recipe stale", () => {

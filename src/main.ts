@@ -8,6 +8,7 @@ import {
   type ReplayExecutor,
   SandboxReplayExecutor,
   StubReplayExecutor,
+  TrustedStubReplayExecutor,
 } from "./execution/replay.ts";
 import { cachedVersionPins } from "./storage/triggers.ts";
 
@@ -28,6 +29,7 @@ try {
 
 const store = new SqliteNodeStore(config.dbPath, {
   versionPins: cachedVersionPins(config.versionsPath),
+  trustedKeys: config.trustedKeys,
 });
 await store.init();
 
@@ -46,6 +48,9 @@ if (registryText !== null) {
 }
 
 let replay: ReplayExecutor = new StubReplayExecutor();
+if (config.replay === "trusted-stub") {
+  replay = new TrustedStubReplayExecutor();
+}
 if (config.replay === "sandbox") {
   if (!config.sandboxCmd) {
     fail("CORPUS_REPLAY=sandbox requires CORPUS_SANDBOX_CMD to be set");
@@ -70,6 +75,8 @@ const server = startServer(ingest, store, {
   trustProxy: config.trustProxy,
   bodyLimit: config.maxBodyBytes,
   corsOrigins: config.corsOrigins,
+  registry,
+  verificationRateLimit: config.verificationRateLimit,
 });
 const bound = await server.listening;
 const boundUrl = config.baseUrl ?? `http://${bound.hostname}:${bound.port}`;

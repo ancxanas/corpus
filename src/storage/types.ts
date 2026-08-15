@@ -37,6 +37,27 @@ export interface IndexedVerification {
   total: number;
   passed: number;
   failed: number;
+  server_replayed: boolean;
+  replayed_at: string | null;
+  replayed_by: string | null;
+}
+
+export interface VerifierMetrics {
+  first_seen: string | null;
+  authored_count: number;
+  cross_verified_count: number;
+}
+
+export interface ReplayRecord {
+  server_replayed: boolean;
+  replayed_at: string | null;
+  replayed_by: string;
+}
+
+export interface KeyReputation {
+  trusted: boolean;
+  weight: number;
+  metrics: VerifierMetrics;
 }
 
 export interface SearchFilter {

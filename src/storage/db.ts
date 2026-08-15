@@ -56,12 +56,22 @@ ALTER TABLE nodes ADD COLUMN title TEXT;
 CREATE INDEX IF NOT EXISTS idx_nodes_title ON nodes(title);
 `;
 
+const SCHEMA_V3 = `
+ALTER TABLE verifications ADD COLUMN server_replayed INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE verifications ADD COLUMN replayed_at TEXT;
+ALTER TABLE verifications ADD COLUMN replayed_by TEXT;
+CREATE INDEX IF NOT EXISTS idx_verif_key ON verifications(public_key);
+`;
+
 const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
   (db) => {
     db.exec(SCHEMA_V1);
   },
   (db) => {
     db.exec(SCHEMA_V2);
+  },
+  (db) => {
+    db.exec(SCHEMA_V3);
   },
 ];
 

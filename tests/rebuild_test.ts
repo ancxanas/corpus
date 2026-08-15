@@ -80,7 +80,7 @@ async function buildCorpus() {
   return { dir, problemCid, recipeCid, v2 };
 }
 
-Deno.test("rebuild restores index, confidence, and heads", async () => {
+Deno.test("rebuild restores index and heads; receipts stay un-replayed", async () => {
   const built = await buildCorpus();
   const { dir, problemCid, recipeCid, v2 } = built;
   const fresh = new SqliteNodeStore(`${dir}/index.db`);
@@ -90,8 +90,15 @@ Deno.test("rebuild restores index, confidence, and heads", async () => {
   assertEquals(count, 5);
 
   const recipe = await fresh.getNode(recipeCid);
-  assertEquals(recipe?.confidence_score, 0.75);
-  assertEquals(recipe?.effective_status, "active");
+  assertEquals(recipe?.confidence_score, 0.0);
+  assertEquals(recipe?.effective_status, "draft");
+
+  const receipts = fresh.getAllReceipts();
+  assertEquals(receipts.length, 2);
+  assertEquals(
+    receipts.every((r) => r.server_replayed === false),
+    true,
+  );
 
   const v2Cid = await cidOf(v2);
   const v2Node = await fresh.getNode(v2Cid);

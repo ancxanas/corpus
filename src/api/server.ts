@@ -8,7 +8,12 @@ import {
   ValidationError,
 } from "../storage/ingest.ts";
 import { InvalidNodeError } from "../storage/types.ts";
-import type { IndexedVerification } from "../storage/types.ts";
+import type {
+  IndexedNode,
+  IndexedVerification,
+  KeyReputation,
+} from "../storage/types.ts";
+import type { EnvSpec, PlaygroundRegistry } from "../execution/registry.ts";
 import { loadSchema } from "../schema/index.ts";
 import {
   document,
@@ -31,6 +36,7 @@ import {
   acceptsJsonApi,
   DEFAULT_BODY_LIMIT,
   hasJsonApiContentType,
+  JSONAPI,
   jsonResponse,
   methodNotAllowed,
   notAcceptable,
@@ -81,6 +87,8 @@ export interface CreateAppOptions {
   corsOrigins?: string[];
   webDir?: string;
   logger?: (line: string) => void;
+  registry?: PlaygroundRegistry | null;
+  verificationRateLimit?: number;
 }
 
 const UI_INDEX = "index.html";
@@ -126,24 +134,48 @@ function originFor(request: Request, trustProxy: boolean): string {
 function serializeReceipt(
   receipt: IndexedVerification,
   baseUrl: string,
+  provenance: { reputation: KeyReputation; env: EnvSpec | null },
 ): Record<string, unknown> {
+  const attributes: Record<string, unknown> = {
+    target: {
+      problem_id: { "/": receipt.problem_cid },
+      solution_id: { "/": receipt.solution_cid },
+    },
+    environment_hash: receipt.environment_hash,
+    public_key: receipt.public_key,
+    timestamp: receipt.timestamp,
+    valid_until: receipt.valid_until,
+    test_suite: {
+      total: receipt.total,
+      passed: receipt.passed,
+      failed: receipt.failed,
+    },
+    server_replayed: receipt.server_replayed,
+    replayed_at: receipt.replayed_at,
+    replayed_by: receipt.replayed_by,
+  };
+  if (provenance.env) {
+    attributes.environment = {
+      playground: provenance.env.playground,
+      platform: provenance.env.platform,
+      version: provenance.env.version,
+      config_hash: provenance.env.config_hash,
+    };
+  }
   return {
     type: "verifications",
     id: receipt.receipt_cid,
     links: { self: `${baseUrl}/verifications/${receipt.receipt_cid}` },
-    attributes: {
-      target: {
-        problem_id: { "/": receipt.problem_cid },
-        solution_id: { "/": receipt.solution_cid },
-      },
-      environment_hash: receipt.environment_hash,
-      public_key: receipt.public_key,
-      timestamp: receipt.timestamp,
-      valid_until: receipt.valid_until,
-      test_suite: {
-        total: receipt.total,
-        passed: receipt.passed,
-        failed: receipt.failed,
+    attributes,
+    meta: {
+      verifier: {
+        key: receipt.public_key,
+        trusted: provenance.reputation.trusted,
+        weight: provenance.reputation.weight,
+        first_seen: provenance.reputation.metrics.first_seen,
+        authored_count: provenance.reputation.metrics.authored_count,
+        cross_verified_count:
+          provenance.reputation.metrics.cross_verified_count,
       },
     },
   };
@@ -160,9 +192,82 @@ export function createApp(
   const trustProxy = options.trustProxy ?? false;
   const corsOrigins = options.corsOrigins ?? [];
   const allowAllOrigins = corsOrigins.includes("*");
+  const envRegistry = options.registry ?? null;
+  const verificationRateLimit = options.verificationRateLimit ?? 60;
+  const verificationHits = new Map<string, number[]>();
   const webDir =
     (options.webDir ?? new URL("../../web/", import.meta.url).pathname)
       .replace(/\/+$/, "");
+
+  function rateLimited(publicKey: string, now: number): boolean {
+    const windowStart = now - 3_600_000;
+    const hits = (verificationHits.get(publicKey) ?? []).filter(
+      (t) => t >= windowStart,
+    );
+    if (hits.length >= verificationRateLimit) {
+      verificationHits.set(publicKey, hits);
+      return true;
+    }
+    hits.push(now);
+    verificationHits.set(publicKey, hits);
+    return false;
+  }
+
+  function serializeReceiptWith(
+    receipt: IndexedVerification,
+    baseUrl: string,
+  ): Record<string, unknown> {
+    return serializeReceipt(receipt, baseUrl, {
+      reputation: store.keyReputation(receipt.public_key),
+      env: envRegistry?.lookup(receipt.environment_hash) ?? null,
+    });
+  }
+
+  async function provenanceFor(
+    cid: string,
+  ): Promise<Record<string, unknown> | null> {
+    const node = await store.getNode(cid);
+    if (!node || node.node_type !== "Recipe") {
+      return null;
+    }
+    const receipts = await store.getReceiptsFor(cid);
+    if (receipts.length === 0) {
+      return { receipt_count: 0 };
+    }
+    const replayed = receipts.filter((r) => r.server_replayed);
+    const keys = [...new Set(replayed.map((r) => r.public_key))];
+    const reps = keys.map((k) => store.keyReputation(k));
+    const now = Date.now();
+    const ages = reps.map((r) =>
+      r.metrics.first_seen
+        ? Math.max(0, (now - Date.parse(r.metrics.first_seen)) / 86_400_000)
+        : Infinity
+    );
+    return {
+      receipt_count: receipts.length,
+      replayed_count: replayed.length,
+      distinct_keys: keys.length,
+      has_trusted_verifier: reps.some((r) => r.trusted),
+      min_key_age_days: Math.round(Math.min(...ages)),
+    };
+  }
+
+  async function withProvenance(
+    resource: Record<string, unknown>,
+    indexed: IndexedNode,
+  ): Promise<Record<string, unknown>> {
+    if (indexed.node_type !== "Recipe") {
+      return resource;
+    }
+    const provenance = await provenanceFor(indexed.cid);
+    if (!provenance) {
+      return resource;
+    }
+    return {
+      ...resource,
+      meta: { ...(resource.meta as Record<string, unknown>), provenance },
+    };
+  }
 
   function serveStatic(segments: string[]): Response | null {
     if (segments[0] !== "ui") {
@@ -564,9 +669,25 @@ export function createApp(
         422,
       );
     }
+    const publicKey = node.osk.attribution.public_key;
+    if (rateLimited(publicKey, Date.now())) {
+      return jsonResponse(
+        errorDocument([
+          {
+            status: "429",
+            title: "rate limited",
+            detail:
+              `This key exceeds ${verificationRateLimit} verifications per hour.`,
+          },
+        ]),
+        429,
+        JSONAPI,
+        { "retry-after": "3600" },
+      );
+    }
     const result = await ingest.ingestVerification(node);
     const receipt = store.getReceipt(result.cid);
-    const resource = receipt ? serializeReceipt(receipt, baseUrl) : null;
+    const resource = receipt ? serializeReceiptWith(receipt, baseUrl) : null;
     return jsonResponse(
       document(resource, {
         baseUrl,
@@ -599,12 +720,13 @@ export function createApp(
     const include = (params.get("include") ?? "").split(",").map((s) =>
       s.trim()
     ).filter(Boolean);
-    const { resource, included } = await serializeWithIncludes(
+    const { resource: rawResource, included } = await serializeWithIncludes(
       store,
       indexed,
       baseUrl,
       include,
     );
+    const resource = await withProvenance(rawResource, indexed);
     return jsonResponse(document(resource, { baseUrl, included }));
   }
 
@@ -648,7 +770,7 @@ export function createApp(
       );
     }
     const receipts = await store.getReceiptsFor(cid);
-    const resources = receipts.map((r) => serializeReceipt(r, baseUrl));
+    const resources = receipts.map((r) => serializeReceiptWith(r, baseUrl));
     return jsonResponse(
       document(resources, { baseUrl, meta: { total: receipts.length } }),
     );
@@ -670,7 +792,7 @@ export function createApp(
       );
     }
     return jsonResponse(
-      document(serializeReceipt(receipt, baseUrl), { baseUrl }),
+      document(serializeReceiptWith(receipt, baseUrl), { baseUrl }),
     );
   }
 
@@ -693,7 +815,7 @@ export function createApp(
       sorted.reverse();
     }
     const page = sorted.slice(offset, offset + limit);
-    const resources = page.map((r) => serializeReceipt(r, baseUrl));
+    const resources = page.map((r) => serializeReceiptWith(r, baseUrl));
 
     const pageLinks: Record<string, string> = {
       first: "",
@@ -775,7 +897,9 @@ export function createApp(
         n.node,
         n.cid,
       );
-      resources.push(serializeResource(n, baseUrl, relationships));
+      resources.push(
+        await withProvenance(serializeResource(n, baseUrl, relationships), n),
+      );
     }
 
     const included: Record<string, unknown>[] = [];
@@ -960,6 +1084,8 @@ export interface StartServerOptions {
   baseUrl?: string | null;
   trustProxy?: boolean;
   corsOrigins?: string[];
+  registry?: PlaygroundRegistry | null;
+  verificationRateLimit?: number;
 }
 
 export function startServer(
@@ -972,6 +1098,8 @@ export function startServer(
     baseUrl: options.baseUrl,
     trustProxy: options.trustProxy,
     corsOrigins: options.corsOrigins,
+    registry: options.registry,
+    verificationRateLimit: options.verificationRateLimit,
   });
   let resolveAddr: (info: { hostname: string; port: number }) => void =
     () => {};

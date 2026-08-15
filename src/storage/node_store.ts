@@ -2,7 +2,11 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { migrate } from "./db.ts";
-import { computeConfidence, computeEffectiveStatus } from "./status.ts";
+import {
+  computeConfidence,
+  computeEffectiveStatus,
+  earnedKeyWeight,
+} from "./status.ts";
 import {
   cachedVersionPins,
   deprecationTriggerFired,
@@ -15,12 +19,23 @@ import {
   type IndexedNode,
   type IndexedVerification,
   InvalidNodeError,
+  type KeyReputation,
+  type ReplayRecord,
   type SearchOptions,
   type SearchResult,
+  type VerifierMetrics,
 } from "./types.ts";
 
 function isUniqueViolation(e: unknown): boolean {
   return e instanceof Error && /UNIQUE constraint failed/i.test(e.message);
+}
+
+function latestByTimestamp(
+  receipts: IndexedVerification[],
+): IndexedVerification {
+  return receipts.reduce((a, b) =>
+    Date.parse(a.timestamp) > Date.parse(b.timestamp) ? a : b
+  );
 }
 
 function rollbackQuietly(db: DatabaseSync): void {
@@ -35,13 +50,20 @@ export interface NodeStore {
   init(): Promise<void>;
   reset(): Promise<void>;
   indexNode(node: Node, cid: string, createdAt: string): Promise<IndexedNode>;
-  addVerification(receipt: Node, cid: string, createdAt: string): Promise<void>;
+  addVerification(
+    receipt: Node,
+    cid: string,
+    createdAt: string,
+    replay: ReplayRecord,
+  ): Promise<void>;
   getNode(cid: string): Promise<IndexedNode | null>;
   getHeadVersion(nodeId: string): Promise<IndexedNode[]>;
   getVersions(nodeId: string): Promise<IndexedNode[]>;
   getReceiptsFor(solutionCid: string): Promise<IndexedVerification[]>;
   getReceipt(receiptCid: string): IndexedVerification | null;
   getAllReceipts(): IndexedVerification[];
+  keyReputation(publicKey: string): KeyReputation;
+  addTrustedKeys(keys: string[]): void;
   hasVerification(cid: string): Promise<boolean>;
   precheckVerification(
     receipt: Node,
@@ -76,6 +98,9 @@ function rowToIndexedVerification(
     total: row.total as number,
     passed: row.passed as number,
     failed: row.failed as number,
+    server_replayed: (row.server_replayed as number) === 1,
+    replayed_at: row.replayed_at as string | null,
+    replayed_by: row.replayed_by as string | null,
   };
 }
 
@@ -105,11 +130,19 @@ export class SqliteNodeStore implements NodeStore {
   #db: DatabaseSync;
   #closed = false;
   #versionPins: () => VersionPin;
+  #trustedKeys: Set<string>;
 
-  constructor(path: string, options: { versionPins?: () => VersionPin } = {}) {
+  constructor(
+    path: string,
+    options: {
+      versionPins?: () => VersionPin;
+      trustedKeys?: string[];
+    } = {},
+  ) {
     mkdirSync(dirname(path), { recursive: true });
     this.#db = new DatabaseSync(path);
     this.#versionPins = options.versionPins ?? cachedVersionPins(undefined);
+    this.#trustedKeys = new Set(options.trustedKeys ?? []);
   }
 
   #triggerFired(node: Node): boolean {
@@ -227,6 +260,7 @@ export class SqliteNodeStore implements NodeStore {
     receipt: Node,
     cid: string,
     createdAt: string,
+    replay: ReplayRecord,
   ): Promise<void> {
     if (!isVerification(receipt)) {
       throw new InvalidNodeError("receipt is not a Verification node");
@@ -254,8 +288,9 @@ export class SqliteNodeStore implements NodeStore {
 
       db.prepare(
         `INSERT INTO verifications (receipt_cid, problem_cid, solution_cid, environment_hash,
-           public_key, timestamp, valid_until, total, passed, failed)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           public_key, timestamp, valid_until, total, passed, failed,
+           server_replayed, replayed_at, replayed_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         cid,
         problemCid,
@@ -267,14 +302,14 @@ export class SqliteNodeStore implements NodeStore {
         verification.execution.test_suite.total,
         verification.execution.test_suite.passed,
         verification.execution.test_suite.failed,
+        replay.server_replayed ? 1 : 0,
+        replay.replayed_at,
+        replay.replayed_by,
       );
 
-      const receipts = this.#receiptsFor(solutionCid);
-      const confidence = computeConfidence(receipts);
-      const latest = receipts.reduce(
-        (a, b) => (Date.parse(a.timestamp) > Date.parse(b.timestamp) ? a : b),
-        receipts[0]!,
-      );
+      const receipts = this.#replayedReceiptsFor(solutionCid);
+      const confidence = this.#confidenceFor(solutionCid, createdAt);
+      const latest = receipts.length > 0 ? latestByTimestamp(receipts) : null;
       const nodeJson =
         (db.prepare("SELECT node_json FROM nodes WHERE cid = ?").get(
           solutionCid,
@@ -417,13 +452,8 @@ export class SqliteNodeStore implements NodeStore {
     if (indexed.node_type !== "Recipe") {
       return indexed;
     }
-    const receipts = this.#receiptsFor(indexed.cid);
-    const latest = receipts.length > 0
-      ? receipts.reduce(
-        (a, b) => (Date.parse(a.timestamp) > Date.parse(b.timestamp) ? a : b),
-        receipts[0]!,
-      )
-      : null;
+    const receipts = this.#replayedReceiptsFor(indexed.cid);
+    const latest = receipts.length > 0 ? latestByTimestamp(receipts) : null;
     const effective = computeEffectiveStatus(indexed.node, {
       latestReceipt: latest,
       triggerFired: this.#triggerFired(indexed.node),
@@ -437,11 +467,72 @@ export class SqliteNodeStore implements NodeStore {
     return indexed;
   }
 
+  #replayedReceiptsFor(solutionCid: string): IndexedVerification[] {
+    const rows = this.#db.prepare(
+      "SELECT * FROM verifications WHERE solution_cid = ? AND server_replayed = 1",
+    ).all(solutionCid) as Record<string, unknown>[];
+    return rows.map(rowToIndexedVerification);
+  }
+
   #receiptsFor(solutionCid: string): IndexedVerification[] {
     const rows = this.#db.prepare(
       "SELECT * FROM verifications WHERE solution_cid = ?",
     ).all(solutionCid) as Record<string, unknown>[];
     return rows.map(rowToIndexedVerification);
+  }
+
+  #keyMetrics(publicKey: string): VerifierMetrics {
+    const nodeRow = this.#db.prepare(
+      "SELECT MIN(created_at) AS first_seen, COUNT(*) AS authored_count FROM nodes WHERE author_public_key = ?",
+    ).get(publicKey) as { first_seen: string | null; authored_count: number };
+    const crossRow = this.#db.prepare(
+      `SELECT COUNT(*) AS c FROM verifications v JOIN nodes n ON n.cid = v.solution_cid
+       WHERE n.author_public_key = ? AND v.public_key != ? AND v.server_replayed = 1`,
+    ).get(publicKey, publicKey) as { c: number };
+    return {
+      first_seen: nodeRow.first_seen,
+      authored_count: nodeRow.authored_count,
+      cross_verified_count: crossRow.c,
+    };
+  }
+
+  #keyWeight(publicKey: string, now: string): number {
+    if (this.#trustedKeys.has(publicKey)) {
+      return 1.0;
+    }
+    return earnedKeyWeight(this.#keyMetrics(publicKey), now);
+  }
+
+  keyReputation(publicKey: string): KeyReputation {
+    const now = new Date().toISOString();
+    const trusted = this.#trustedKeys.has(publicKey);
+    const metrics = this.#keyMetrics(publicKey);
+    return {
+      trusted,
+      metrics,
+      weight: trusted ? 1.0 : earnedKeyWeight(metrics, now),
+    };
+  }
+
+  addTrustedKeys(keys: string[]): void {
+    for (const key of keys) {
+      this.#trustedKeys.add(key);
+    }
+  }
+
+  #confidenceFor(solutionCid: string, now: string): number {
+    const receipts = this.#replayedReceiptsFor(solutionCid);
+    const keyWeights = new Map<string, number>();
+    let hasTrustedVerifier = false;
+    for (const r of receipts) {
+      if (!keyWeights.has(r.public_key)) {
+        keyWeights.set(r.public_key, this.#keyWeight(r.public_key, now));
+      }
+      if (this.#trustedKeys.has(r.public_key)) {
+        hasTrustedVerifier = true;
+      }
+    }
+    return computeConfidence(receipts, keyWeights, hasTrustedVerifier);
   }
 
   async search(options: SearchOptions): Promise<SearchResult> {

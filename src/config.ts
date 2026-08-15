@@ -15,8 +15,10 @@ export interface Config {
   baseUrl: string | undefined;
   trustProxy: boolean;
   versionsPath: string | undefined;
-  replay: "stub" | "sandbox";
+  replay: "stub" | "trusted-stub" | "sandbox";
   sandboxCmd: string | undefined;
+  trustedKeys: string[];
+  verificationRateLimit: number;
   maxBodyBytes: number;
   corsOrigins: string[];
 }
@@ -58,11 +60,15 @@ export function loadConfig(
 ): Config {
   const root = env.CORPUS_DATA_DIR ?? "data";
   const replay = env.CORPUS_REPLAY ?? "stub";
-  if (replay !== "stub" && replay !== "sandbox") {
+  if (replay !== "stub" && replay !== "trusted-stub" && replay !== "sandbox") {
     throw new ConfigError(
-      `unknown CORPUS_REPLAY=${replay} (use stub or sandbox)`,
+      `unknown CORPUS_REPLAY=${replay} (use stub, trusted-stub, or sandbox)`,
     );
   }
+  const trustedKeys = (env.CORPUS_TRUSTED_KEYS ?? "")
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
   return {
     root,
     dbPath: `${root}/corpus.db`,
@@ -75,6 +81,8 @@ export function loadConfig(
     versionsPath: env.CORPUS_VERSIONS,
     replay,
     sandboxCmd: env.CORPUS_SANDBOX_CMD,
+    trustedKeys,
+    verificationRateLimit: Number(env.CORPUS_VERIFICATION_RATE_LIMIT) || 60,
     maxBodyBytes: Number(env.CORPUS_MAX_BODY_BYTES) || 1_048_576,
     corsOrigins: parseOrigins(env.CORPUS_CORS_ORIGINS),
   };

@@ -15,18 +15,33 @@ export interface ReplayResult {
   cases: ReplayCase[];
 }
 
+export interface DeclaredTestSuite {
+  total: number;
+  passed: number;
+  failed: number;
+  cases: { name: string; result: string }[];
+}
+
 export interface ReplayExecutor {
   readonly enforced: boolean;
-  replay(solution: Node, problem: Node, env: EnvSpec): Promise<ReplayResult>;
+  readonly label: string;
+  replay(
+    solution: Node,
+    problem: Node,
+    env: EnvSpec,
+    declared?: DeclaredTestSuite,
+  ): Promise<ReplayResult>;
 }
 
 export class StubReplayExecutor implements ReplayExecutor {
   readonly enforced = false;
+  readonly label = "stub";
 
   async replay(
     _solution: Node,
     _problem: Node,
     _env: EnvSpec,
+    _declared?: DeclaredTestSuite,
   ): Promise<ReplayResult> {
     return await Promise.resolve({
       outcome: "pass",
@@ -39,8 +54,31 @@ export class StubReplayExecutor implements ReplayExecutor {
   }
 }
 
+export class TrustedStubReplayExecutor implements ReplayExecutor {
+  readonly enforced = true;
+  readonly label = "trusted-stub";
+
+  async replay(
+    _solution: Node,
+    _problem: Node,
+    _env: EnvSpec,
+    declared?: DeclaredTestSuite,
+  ): Promise<ReplayResult> {
+    const suite = declared ?? { total: 1, passed: 1, failed: 0, cases: [] };
+    return await Promise.resolve({
+      outcome: "pass",
+      total: suite.total,
+      passed: suite.passed,
+      failed: suite.failed,
+      log: "trusted-stub replay: the operator vouches for the claimed suite",
+      cases: suite.cases.map((c) => ({ name: c.name, result: c.result })),
+    });
+  }
+}
+
 export class SandboxReplayExecutor implements ReplayExecutor {
   readonly enforced = true;
+  readonly label = "sandbox";
   readonly #cmd: string[];
   readonly #timeoutMs: number;
 
@@ -61,6 +99,7 @@ export class SandboxReplayExecutor implements ReplayExecutor {
     solution: Node,
     problem: Node,
     env: EnvSpec,
+    _declared?: DeclaredTestSuite,
   ): Promise<ReplayResult> {
     const input = JSON.stringify({ solution, problem, env });
     const command = new Deno.Command(this.#cmd[0]!, {

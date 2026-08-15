@@ -40,17 +40,21 @@ const HOW_TO_WRITE =
 
 const TRUST_MODEL =
   "effective_status is a computed verdict. confidence_score 0.0 means no " +
-  "receipts or the latest receipt failed; it never sets effective_status. " +
-  "disputed means a failed receipt or an authorship conflict. disputed and " +
-  "deprecated nodes stay queryable. confidence_score is per-solution: it " +
-  "reflects the receipts on one recipe, not its linked problem. Problems " +
-  "are never verified directly, so a problem score stays 0. The score " +
-  "counts independent sources: receipts from the same public_key or the " +
-  "same environment_hash count once. The server does not weight keys by " +
-  "history or reputation, so one actor with many keys and environments can " +
-  "raise a score. Treat the server score as one default lens. Recompute " +
-  "trust client-side from the signed, content-addressed receipts to apply " +
-  "your own policy.";
+  "replayed receipts or the latest receipt failed; it never sets " +
+  "effective_status. disputed means a failed receipt or an authorship " +
+  "conflict. disputed and deprecated nodes stay queryable. confidence_score " +
+  "is per-solution: it reflects the receipts on one recipe, not its linked " +
+  "problem. Problems are never verified directly, so a problem score stays " +
+  "0. The score counts replayed receipts only: receipts the server did not " +
+  "replay (stub mode) never move the score. A receipt counts as one source " +
+  "per distinct key, weighted by verifier reputation. Operator-trusted keys " +
+  "weight 1.0. Other keys earn weight from key age, authored nodes, and " +
+  "cross-verified solutions, so fresh keys contribute almost nothing. The " +
+  "score caps untrusted sources at two unless a trusted key verified the " +
+  "recipe. This raises the cost of a Sybil attack: new keys cannot pump a " +
+  "score. Each receipt exposes its replay status, environment, and verifier " +
+  "reputation, so you can recompute trust client-side from the signed, " +
+  "content-addressed receipts and apply your own policy.";
 
 export function buildSelfDescription(baseUrl: string): Record<string, unknown> {
   const nodeTypes: Record<string, unknown> = {};

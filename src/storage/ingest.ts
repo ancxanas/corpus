@@ -9,7 +9,7 @@ import type {
 import { isVerification } from "../nodetypes/registry.ts";
 import type { Blockstore } from "./blockstore.ts";
 import type { NodeStore } from "./node_store.ts";
-import type { IndexedNode } from "./types.ts";
+import type { IndexedNode, ReplayRecord } from "./types.ts";
 import type { PlaygroundRegistry } from "../execution/registry.ts";
 import {
   type ReplayExecutor,
@@ -163,6 +163,12 @@ export class IngestService {
     if (precheck.length > 0) {
       throw new ValidationError(precheck);
     }
+    const createdAt = new Date().toISOString();
+    let replayed: ReplayRecord = {
+      server_replayed: false,
+      replayed_at: null,
+      replayed_by: this.#replay.label,
+    };
     if (this.#replay.enforced) {
       const solution = await this.#store.getNode(
         node.payload.verification.target.solution_id["/"],
@@ -180,22 +186,37 @@ export class IngestService {
       }
       let result: ReplayResult;
       try {
-        result = await this.#replay.replay(solution.node, problem.node, env);
+        result = await this.#replay.replay(
+          solution.node,
+          problem.node,
+          env,
+          verification.execution.test_suite,
+        );
       } catch {
         throw new ReplayUnavailableError("verification execution unavailable");
       }
-      const issues = compareReplay(
+      const compareIssues = compareReplay(
         node.payload.verification.execution.test_suite,
         result,
       );
-      if (issues.length > 0) {
-        throw new ValidationError(issues);
+      if (compareIssues.length > 0) {
+        throw new ValidationError(compareIssues);
       }
+      replayed = {
+        server_replayed: true,
+        replayed_at: createdAt,
+        replayed_by: this.#replay.label,
+      };
     }
     const cid = await this.#blockstore.put(canonicalBytes(node));
     try {
       if (!await this.#store.hasVerification(cid)) {
-        await this.#store.addVerification(node, cid, new Date().toISOString());
+        await this.#store.addVerification(
+          node,
+          cid,
+          createdAt,
+          replayed,
+        );
       }
     } catch (e) {
       await this.#blockstore.delete(cid).catch(() => {});

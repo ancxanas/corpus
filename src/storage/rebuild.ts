@@ -56,7 +56,11 @@ export async function rebuildIndex(
     await store.indexNode(node, cid, now);
   }
   for (const { cid, node } of receipts) {
-    await store.addVerification(node, cid, now);
+    await store.addVerification(node, cid, now, {
+      server_replayed: false,
+      replayed_at: null,
+      replayed_by: "rebuild",
+    });
   }
   return blocks.length;
 }

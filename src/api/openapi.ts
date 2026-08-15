@@ -184,6 +184,34 @@ const ENVELOPE_SCHEMAS: Json = {
               failed: { type: "integer" },
             },
           },
+          environment: {
+            type: "object",
+            properties: {
+              playground: { type: "string" },
+              platform: { type: "string" },
+              version: { type: "string" },
+              config_hash: { type: "string" },
+            },
+          },
+          server_replayed: { type: "boolean" },
+          replayed_at: { $ref: "#/components/schemas/iso8601" },
+          replayed_by: { type: "string" },
+        },
+      },
+      meta: {
+        type: "object",
+        properties: {
+          verifier: {
+            type: "object",
+            properties: {
+              key: { $ref: "#/components/schemas/ed25519PublicKey" },
+              trusted: { type: "boolean" },
+              weight: { type: "number" },
+              first_seen: { $ref: "#/components/schemas/iso8601" },
+              authored_count: { type: "integer" },
+              cross_verified_count: { type: "integer" },
+            },
+          },
         },
       },
     },
@@ -310,6 +338,20 @@ const ERROR_RESPONSES: Json = {
   },
   "406": {
     description: "The Accept header does not allow a JSON:API response.",
+    content: {
+      "application/vnd.api+json": {
+        schema: { $ref: "#/components/schemas/ErrorDocument" },
+      },
+    },
+  },
+  "429": {
+    description: "The key exceeded the hourly verification rate limit.",
+    headers: {
+      "retry-after": {
+        description: "Seconds until the window resets.",
+        schema: { type: "string" },
+      },
+    },
     content: {
       "application/vnd.api+json": {
         schema: { $ref: "#/components/schemas/ErrorDocument" },
@@ -633,6 +675,7 @@ function buildPaths(): Json {
           "413": ERROR_RESPONSES["413"],
           "415": ERROR_RESPONSES["415"],
           "422": ERROR_RESPONSES["422"],
+          "429": ERROR_RESPONSES["429"],
           "503": ERROR_RESPONSES["503"],
         },
       },

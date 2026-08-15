@@ -8,6 +8,8 @@ import {
   ValidationError,
 } from "../src/storage/ingest.ts";
 import { InvalidNodeError } from "../src/storage/types.ts";
+import { PlaygroundRegistry } from "../src/execution/registry.ts";
+import { TrustedStubReplayExecutor } from "../src/execution/replay.ts";
 import { generateKeyPair } from "../src/core/sign.ts";
 import {
   cidOf,
@@ -22,6 +24,31 @@ function tempDir(): string {
   return `/tmp/opencode/corpus-test-${crypto.randomUUID()}`;
 }
 
+function makeIngest(dir: string, index: SqliteNodeStore): IngestService {
+  const registry = new PlaygroundRegistry([
+    {
+      environment_hash: "e".repeat(64),
+      playground: "sandbox-den",
+      platform: "linux",
+      version: "1.0",
+      config_hash: "cfg-e",
+    },
+    {
+      environment_hash: "f".repeat(64),
+      playground: "sandbox-den",
+      platform: "linux",
+      version: "1.0",
+      config_hash: "cfg-f",
+    },
+  ]);
+  return new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    index,
+    registry,
+    new TrustedStubReplayExecutor(),
+  );
+}
+
 interface Env {
   dir: string;
   ingest: IngestService;
@@ -34,14 +61,13 @@ interface Env {
 
 async function makeEnv(): Promise<Env> {
   const dir = tempDir();
-  const index = new SqliteNodeStore(`${dir}/index.db`);
-  await index.init();
-  const ingest = new IngestService(
-    new FileBlockstore({ dir: `${dir}/blocks` }),
-    index,
-  );
   const authorKey = generateKeyPair();
   const verifierKey = generateKeyPair();
+  const index = new SqliteNodeStore(`${dir}/index.db`, {
+    trustedKeys: [verifierKey.publicKeyHex],
+  });
+  await index.init();
+  const ingest = makeIngest(dir, index);
 
   const problem = signed(
     problemNode(authorKey.publicKeyHex),
@@ -101,6 +127,7 @@ Deno.test("recipe with one verification gets confidence 0.5", async () => {
 Deno.test("two verifications with different env hashes give 0.75", async () => {
   const env = await makeEnv();
   const secondKey = generateKeyPair();
+  env.index.addTrustedKeys([secondKey.publicKeyHex]);
   const r1 = signed(
     verificationNode(
       env.verifierKey.publicKeyHex,
@@ -364,10 +391,7 @@ Deno.test("deprecation trigger matching the pinned version sets stale", async ()
     versionPins: () => ({ deno: "3.0.0" }),
   });
   await index.init();
-  const ingest = new IngestService(
-    new FileBlockstore({ dir: `${dir}/blocks` }),
-    index,
-  );
+  const ingest = makeIngest(dir, index);
   const authorKey = generateKeyPair();
   const recipe = signed(
     recipeNode(authorKey.publicKeyHex, {
@@ -393,10 +417,7 @@ Deno.test("deprecation trigger below the pinned version stays draft", async () =
     versionPins: () => ({ deno: "2.0.0" }),
   });
   await index.init();
-  const ingest = new IngestService(
-    new FileBlockstore({ dir: `${dir}/blocks` }),
-    index,
-  );
+  const ingest = makeIngest(dir, index);
   const authorKey = generateKeyPair();
   const recipe = signed(
     recipeNode(authorKey.publicKeyHex, {
@@ -418,16 +439,14 @@ Deno.test("deprecation trigger below the pinned version stays draft", async () =
 
 Deno.test("deprecation trigger stays stale even with a passing receipt", async () => {
   const dir = tempDir();
-  const index = new SqliteNodeStore(`${dir}/index.db`, {
-    versionPins: () => ({ deno: "3.0.0" }),
-  });
-  await index.init();
-  const ingest = new IngestService(
-    new FileBlockstore({ dir: `${dir}/blocks` }),
-    index,
-  );
   const authorKey = generateKeyPair();
   const verifierKey = generateKeyPair();
+  const index = new SqliteNodeStore(`${dir}/index.db`, {
+    versionPins: () => ({ deno: "3.0.0" }),
+    trustedKeys: [verifierKey.publicKeyHex],
+  });
+  await index.init();
+  const ingest = makeIngest(dir, index);
   const problem = signed(
     problemNode(authorKey.publicKeyHex),
     authorKey.secretKeyHex,
