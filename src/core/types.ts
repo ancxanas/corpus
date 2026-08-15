@@ -1,6 +1,7 @@
 export type NodeType =
   | "Problem"
   | "Recipe"
+  | "Guide"
   | "Verification";
 
 export type LifecycleStatus = "active" | "deprecated" | "disputed" | "draft";
@@ -41,16 +42,26 @@ export interface Osk {
   attribution: Attribution;
 }
 
+export interface Step {
+  title: string;
+  body: string;
+  code?: string;
+}
+
 export interface ProblemPayload {
   problem: {
     title: string;
     severity: "critical" | "high" | "medium" | "low";
+    summary?: string;
+    impact?: string;
     symptoms: Array<{
       type: "runtime_behavior" | "error_message" | "performance_degradation";
       description: string;
       observable: string;
       frequency: "always" | "intermittent" | "race_condition";
     }>;
+    reproduction?: Step[];
+    diagnosis?: Step[];
     root_cause: {
       mechanism: string;
       causal_chain: string[];
@@ -70,22 +81,64 @@ export interface ProblemPayload {
       node: IpldLink;
       applies_to?: string;
     }>;
+    tags?: string[];
+    references?: Array<{ title: string; url: string }>;
   };
 }
 
 export interface RecipePayload {
   recipe: {
     title: string;
+    summary?: string;
     code: {
       language: string;
       framework?: string;
       body: string;
     };
     explanation: string;
+    prerequisites?: Array<{
+      description: string;
+      node?: IpldLink;
+    }>;
+    steps?: Step[];
+    verification?: string;
     caveats?: Array<{
       condition: string;
       warning: string;
     }>;
+    tags?: string[];
+    references?: Array<{ title: string; url: string }>;
+  };
+}
+
+export type GuideDepth = "beginner" | "intermediate" | "advanced";
+
+export interface GuidePayload {
+  guide: {
+    title: string;
+    summary?: string;
+    epistemic_status: "verified" | "heuristic" | "draft";
+    sections: Array<{
+      heading: string;
+      claim: string;
+      depth: GuideDepth;
+      verification: {
+        type: "demonstration" | "source_attestation";
+        demonstration_cid?: IpldLink;
+        attested_source?: string;
+        playground_receipt?: IpldLink;
+        result: "confirmed" | "unconfirmed";
+      };
+    }>;
+    prerequisites?: Array<{
+      node: IpldLink;
+      required_depth?: GuideDepth;
+    }>;
+    caveats?: Array<{
+      condition: string;
+      warning: string;
+    }>;
+    tags?: string[];
   };
 }
 

@@ -26,6 +26,55 @@
           "properties": {
             "title": { "type": "string", "minLength": 1, "maxLength": 120 },
             "severity": { "enum": ["critical", "high", "medium", "low"] },
+            "summary": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "impact": { "type": "string", "minLength": 1, "maxLength": 2000 },
+            "reproduction": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["title", "body"],
+                "properties": {
+                  "title": { "type": "string", "minLength": 1 },
+                  "body": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": false
+              }
+            },
+            "diagnosis": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["title", "body"],
+                "properties": {
+                  "title": { "type": "string", "minLength": 1 },
+                  "body": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": false
+              }
+            },
+            "tags": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "maxItems": 20
+            },
+            "references": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["title", "url"],
+                "properties": {
+                  "title": { "type": "string", "minLength": 1 },
+                  "url": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": false
+              }
+            },
             "symptoms": {
               "type": "array",
               "minItems": 1,

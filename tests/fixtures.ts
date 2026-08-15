@@ -1,5 +1,6 @@
 import type {
   DeprecationTrigger,
+  GuidePayload,
   Node,
   ProblemPayload,
   RecipePayload,
@@ -134,6 +135,43 @@ export function verificationNode(
         },
         timestamp: "2026-08-14T00:00:00Z",
         ...overrides,
+      },
+    },
+  };
+}
+
+export function guideNode(
+  pubKey: string,
+  options: { nodeId?: string } = {},
+): Node<GuidePayload> {
+  return {
+    osk: {
+      version: "0.3.0",
+      node_type: "Guide",
+      node_id: options.nodeId ?? uuidv7(),
+      knowledge_lifecycle: {
+        status: "active",
+        last_verified: "2026-08-14T00:00:00Z",
+      },
+      attribution: { author_type: "agent", public_key: pubKey },
+    },
+    payload: {
+      guide: {
+        title: "Iterating without blowing the call stack",
+        epistemic_status: "verified",
+        sections: [
+          {
+            heading: "Why recursion overflows",
+            claim: "Deep recursion exceeds the default call stack.",
+            depth: "beginner",
+            verification: {
+              type: "demonstration",
+              demonstration_cid: { "/": "b".repeat(61) },
+              playground_receipt: { "/": "b".repeat(61) },
+              result: "confirmed",
+            },
+          },
+        ],
       },
     },
   };

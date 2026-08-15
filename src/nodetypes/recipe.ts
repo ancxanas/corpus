@@ -25,15 +25,28 @@ export const recipeModule: NodeTypeModule = {
       payload: {
         recipe: {
           title: "A short title for the recipe",
+          summary: "A 2-3 sentence overview of the approach.",
           code: {
             language: "typescript",
             framework: "deno",
             body: "// paste the recipe code here",
           },
           explanation: "Explain how the recipe fixes the problem.",
+          prerequisites: [
+            { description: "What must be in place before this applies" },
+          ],
+          steps: [
+            { title: "First step", body: "describe what to do" },
+          ],
+          verification: "How to confirm the recipe works in practice.",
           caveats: [
             { condition: "when X happens", warning: "do Y instead" },
           ],
+          tags: ["keyword1", "keyword2"],
+          references: [{
+            title: "Reference title",
+            url: "https://example.com",
+          }],
         },
       },
     };
@@ -47,11 +60,23 @@ export const recipeModule: NodeTypeModule = {
     }
     return verified ? "active" : "draft";
   },
-  relationships() {
-    return [];
+  relationships(node) {
+    if (!isRecipe(node)) {
+      return [];
+    }
+    const prereqs = node.payload.recipe.prerequisites ?? [];
+    const links = prereqs
+      .filter((p): p is Required<typeof p> => Boolean(p.node))
+      .map((p) => ({ cid: p.node["/"], fallback: "nodes" }));
+    return links.length ? [{ name: "prerequisites", links }] : [];
   },
-  linkedCids() {
-    return [];
+  linkedCids(node, relationship) {
+    if (!isRecipe(node) || relationship !== "prerequisites") {
+      return [];
+    }
+    return (node.payload.recipe.prerequisites ?? [])
+      .map((p) => p.node?.["/"])
+      .filter((c): c is string => Boolean(c));
   },
   crossFieldChecks() {
     return [];

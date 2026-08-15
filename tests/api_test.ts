@@ -7,6 +7,7 @@ import { createApp } from "../src/api/server.ts";
 import type { Node, ProblemPayload } from "../src/core/types.ts";
 import {
   cidOf,
+  guideNode,
   problemNode,
   recipeNode,
   signed,
@@ -290,6 +291,48 @@ Deno.test("GET /schemas/{node_type} returns the JSON Schema", async () => {
     body.data.attributes.properties.osk.allOf[1].properties.node_type.const,
     "Recipe",
   );
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /schemas/guides returns the Guide JSON Schema", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, "/schemas/guides");
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  assertEquals(body.data.id, "guides");
+  assertEquals(
+    body.data.attributes.properties.osk.allOf[1].properties.node_type.const,
+    "Guide",
+  );
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("POST /nodes stores a signed guide", async () => {
+  const { handler, authorKey, dir } = await makeServer();
+  const node = signed(
+    guideNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
+  const res = await req(handler, "/nodes", postNode("guides", node));
+  const body = await res.json();
+  assertEquals(res.status, 201);
+  assertEquals(body.data.type, "guides");
+  assertEquals(typeof body.meta.cid, "string");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /nodes?filter[node_type]=guides returns guides", async () => {
+  const { handler, authorKey, dir } = await makeServer();
+  const node = signed(
+    guideNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
+  await req(handler, "/nodes", postNode("guides", node));
+  const res = await req(handler, "/nodes?filter[node_type]=guides");
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  assertEquals(body.meta.total, 1);
+  assertEquals(body.data[0].type, "guides");
   await Deno.remove(dir, { recursive: true });
 });
 

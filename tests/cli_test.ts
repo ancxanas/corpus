@@ -80,6 +80,28 @@ Deno.test("cli node template problem passes schema validation", async () => {
   await Deno.remove(file).catch(() => {});
 });
 
+Deno.test("cli node template guide passes schema validation", async () => {
+  const key = generateKeyPair();
+  const file = tempKey();
+  Deno.writeTextFileSync(
+    file,
+    JSON.stringify({ public_key: key.publicKeyHex }),
+  );
+  const out = await run([
+    "node",
+    "template",
+    "--type",
+    "guide",
+    "--key",
+    file,
+  ]);
+  assertEquals(out.code, 0);
+  const template = JSON.parse(out.stdout) as unknown;
+  const issues = await validateNode(template);
+  assertEquals(issues, []);
+  await Deno.remove(file).catch(() => {});
+});
+
 Deno.test("cli usage errors exit 2", async () => {
   const noArgs = await run([]);
   assertEquals(noArgs.code, 2);

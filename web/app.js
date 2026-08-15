@@ -447,5 +447,5 @@ function render() {
   }
 }
 
-window.addEventListener("hashchange", render);
+addEventListener("hashchange", render);
 render();

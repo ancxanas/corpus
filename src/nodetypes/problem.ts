@@ -26,6 +26,8 @@ export const problemModule: NodeTypeModule = {
         problem: {
           title: "A short title for the problem",
           severity: "high",
+          summary: "A 2-3 sentence overview of the problem and its context.",
+          impact: "What breaks for users or systems when this occurs.",
           symptoms: [
             {
               type: "runtime_behavior",
@@ -33,6 +35,12 @@ export const problemModule: NodeTypeModule = {
               observable: "describe the observable signal",
               frequency: "intermittent",
             },
+          ],
+          reproduction: [
+            { title: "First step", body: "describe what to do" },
+          ],
+          diagnosis: [
+            { title: "Confirm the cause", body: "describe how to verify" },
           ],
           root_cause: {
             mechanism: "describe the root cause",
@@ -42,6 +50,11 @@ export const problemModule: NodeTypeModule = {
             runtime: { type: "node", versions: ["22.x"] },
             framework: { name: "deno", version: "2.x" },
           },
+          tags: ["keyword1", "keyword2"],
+          references: [{
+            title: "Reference title",
+            url: "https://example.com",
+          }],
         },
       },
     };

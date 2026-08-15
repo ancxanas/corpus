@@ -2,15 +2,18 @@ import type { NodeType } from "../core/types.ts";
 import type { NodeTypeModule } from "./types.ts";
 import { problemModule } from "./problem.ts";
 import { recipeModule } from "./recipe.ts";
+import { guideModule } from "./guide.ts";
 import { verificationModule } from "./verification.ts";
 
 export { isProblem } from "./problem.ts";
 export { isRecipe } from "./recipe.ts";
+export { isGuide } from "./guide.ts";
 export { isVerification } from "./verification.ts";
 
 export const registry: Record<NodeType, NodeTypeModule> = {
   Problem: problemModule,
   Recipe: recipeModule,
+  Guide: guideModule,
   Verification: verificationModule,
 };
 

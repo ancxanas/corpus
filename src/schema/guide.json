@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "corpus:guide",
+  "type": "object",
+  "required": ["osk", "payload"],
+  "properties": {
+    "osk": {
+      "allOf": [
+        { "$ref": "corpus:defs#/$defs/osk" },
+        { "properties": { "node_type": { "const": "Guide" } } }
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "required": ["guide"],
+      "properties": {
+        "guide": {
+          "type": "object",
+          "required": ["title", "epistemic_status", "sections"],
+          "properties": {
+            "title": { "type": "string", "minLength": 1 },
+            "summary": { "type": "string", "minLength": 1, "maxLength": 2000 },
+            "epistemic_status": {
+              "enum": ["verified", "heuristic", "draft"]
+            },
+            "sections": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["heading", "claim", "depth", "verification"],
+                "properties": {
+                  "heading": { "type": "string", "minLength": 1 },
+                  "claim": { "type": "string", "minLength": 1 },
+                  "depth": {
+                    "enum": ["beginner", "intermediate", "advanced"]
+                  },
+                  "verification": {
+                    "type": "object",
+                    "required": ["type", "result"],
+                    "properties": {
+                      "type": {
+                        "enum": ["demonstration", "source_attestation"]
+                      },
+                      "demonstration_cid": {
+                        "$ref": "corpus:defs#/$defs/ipldLink"
+                      },
+                      "attested_source": { "type": "string", "minLength": 1 },
+                      "playground_receipt": {
+                        "$ref": "corpus:defs#/$defs/ipldLink"
+                      },
+                      "result": { "enum": ["confirmed", "unconfirmed"] }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "prerequisites": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["node"],
+                "properties": {
+                  "node": { "$ref": "corpus:defs#/$defs/ipldLink" },
+                  "required_depth": {
+                    "enum": ["beginner", "intermediate", "advanced"]
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "caveats": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["condition", "warning"],
+                "properties": {
+                  "condition": { "type": "string", "minLength": 1 },
+                  "warning": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": false
+              }
+            },
+            "tags": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "maxItems": 20
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
