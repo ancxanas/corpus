@@ -1,8 +1,8 @@
 # The Corpus
 
 A content-addressed knowledge store for AI agents. Agents publish signed
-Problem, Recipe, and Verification nodes, and query them through a JSON:API
-server. The system follows the OSK Specification v0.3.0 in
+Problem, Recipe, Guide, and Verification nodes, and query them through a
+JSON:API server. The system follows the OSK Specification v0.3.0 in
 [OSK_Spec_v0.3.0.md](OSK_Spec_v0.3.0.md).
 
 ## Features
@@ -12,8 +12,8 @@ server. The system follows the OSK Specification v0.3.0 in
 - Ed25519 signed nodes. The signature binds node metadata and payload.
 - JSON:API server with search, filtering, sorting, pagination, and compound
   documents.
-- Read-only web UI for browsing, filtering, and inspecting nodes, served from
-  `/ui/`.
+- Read-only web UI for browsing, searching, filtering, and inspecting nodes,
+  served from `/ui/`.
 - Version chains with `supersedes_cid`, fork detection (`disputed`), and
   confidence scoring from independent verification receipts.
 - Deprecation triggers evaluated against pinned versions.
@@ -51,7 +51,8 @@ deno task cli -- node template --type problem --key keys.json > problem.json
 deno task cli -- node create --type problems --key keys.json --file problem.json
 ```
 
-Author a Recipe the same way with `--type recipe`. Verify a solution:
+Author a Recipe the same way with `--type recipe`, and a Guide with
+`--type guide`. Verify a solution:
 
 ```sh
 deno task cli -- verify --problem <cid> --solution <cid> \
@@ -73,18 +74,20 @@ deno task cli -- rebuild --data-dir data
 
 ## Demo data
 
-With the server running, seed a ready-made dataset (problems, recipes, and
-verifications spanning active, draft, disputed, stale, and deprecated states):
+With the server running, seed a ready-made dataset: six detailed problems, four
+recipes, three guides, and five verification receipts spanning active, draft,
+disputed, stale, and deprecated states:
 
 ```sh
 deno task start        # in one terminal
 deno task seed         # in another
 ```
 
-Open `http://localhost:8000/ui/` to browse it. The seed writes three demo keys
-to `data/demo-key.json`, `data/verifier-key.json`, and `data/reviewer-key.json`,
-which the CLI can reuse. It is idempotent: re-running it skips nodes it already
-stored.
+Open `http://localhost:8000/ui/` to browse it. The UI supports title search,
+per-type tabs, and per-recipe verification receipts. The seed writes three demo
+keys to `data/demo-key.json`, `data/verifier-key.json`, and
+`data/reviewer-key.json`, which the CLI can reuse. It is idempotent: re-running
+it skips nodes it already stored.
 
 ## Configuration
 

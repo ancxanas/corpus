@@ -119,6 +119,8 @@ The table describes `effective_status`. The index computes it per 6.3.
     "problem": {
       "title": "<problem_title_max_120_chars>",
       "severity": "<critical|high|medium|low>",
+      "summary": "<short_overview_of_the_problem>",
+      "impact": "<what_breaks_for_users_or_systems>",
       "symptoms": [
         {
           "type": "<runtime_behavior|error_message|performance_degradation>",
@@ -126,6 +128,12 @@ The table describes `effective_status`. The index computes it per 6.3.
           "observable": "<specific_observable_evidence>",
           "frequency": "<always|intermittent|race_condition>"
         }
+      ],
+      "reproduction": [
+        { "title": "<step_title>", "body": "<step_instructions>" }
+      ],
+      "diagnosis": [
+        { "title": "<step_title>", "body": "<step_instructions>" }
       ],
       "root_cause": {
         "mechanism": "<causal_mechanism_description>",
@@ -144,6 +152,10 @@ The table describes `effective_status`. The index computes it per 6.3.
       },
       "solutions": [
         { "node": { "/": "<solution_cid>" }, "applies_to": "<applicable_version_range>" }
+      ],
+      "tags": ["<tag_1>", "<tag_n>"],
+      "references": [
+        { "title": "<reference_title>", "url": "<reference_url>" }
       ]
     }
   }
@@ -161,6 +173,11 @@ The table describes `effective_status`. The index computes it per 6.3.
 - `problem.solutions` — MAY include an `applies_to` field on each link. When
   present, it MUST be a version range matching the technology named in
   `problem.environment.framework` or `problem.environment.runtime.type`.
+- `problem.summary`, `problem.impact`, `problem.reproduction`,
+  `problem.diagnosis`, `problem.tags`, and `problem.references` — optional. When
+  present, `reproduction` and `diagnosis` items MUST have a `title` and a
+  `body`, `references` items MUST have a `title` and a `url`, and `tags` MUST
+  NOT exceed 20 entries.
 
 ### 3.2 Recipe (Solution)
 
@@ -173,17 +190,32 @@ Problem.
   "payload": {
     "recipe": {
       "title": "<recipe_title>",
+      "summary": "<short_overview_of_the_solution>",
       "code": {
         "language": "<tree_sitter_language_id>",
         "framework": "<framework_name>",
         "body": "<executable_code_string>"
       },
       "explanation": "<why_this_works_description>",
+      "prerequisites": [
+        {
+          "description": "<what_must_be_in_place>",
+          "node": { "/": "<recipe_or_guide_cid>" }
+        }
+      ],
+      "steps": [
+        { "title": "<step_title>", "body": "<step_instructions>", "code": "<optional_code>" }
+      ],
+      "verification": "<how_to_confirm_the_solution_works>",
       "caveats": [
         {
           "condition": "<when_this_caveat_applies>",
           "warning": "<what_could_go_wrong>"
         }
+      ],
+      "tags": ["<tag_1>", "<tag_n>"],
+      "references": [
+        { "title": "<reference_title>", "url": "<reference_url>" }
       ]
     }
   }
@@ -199,6 +231,12 @@ Problem.
 - The index maintains all verification data and `confidence_score` for a Recipe.
   The index computes them per 6.2. They are never stored in a node and never
   signed.
+- `recipe.summary`, `recipe.prerequisites`, `recipe.steps`,
+  `recipe.verification`, `recipe.tags`, and `recipe.references` — optional. When
+  present, `steps` items MUST have a `title` and a `body`, `references` items
+  MUST have a `title` and a `url`, `prerequisites` items MUST have a
+  `description` and MAY link a node via `node`, and `tags` MUST NOT exceed 20
+  entries.
 
 ### 3.3 Verification Receipt
 
@@ -719,7 +757,8 @@ GET /nodes?filter[node_type]=<type>&filter[<field>]=<value>&sort=-last_verified
 
 **Requirements:**
 
-- The Corpus MUST support filtering by any indexed field.
+- The Corpus MUST support filtering by any indexed field. `filter[title]`
+  matches the node title case-insensitively with substring semantics.
 - The Corpus MUST support sorting by `last_verified`, `created_at`, and
   `confidence_score`.
 - Paginated responses MUST include standard JSON:API pagination links (`first`,
@@ -780,6 +819,22 @@ GET /nodes/by-node-id/{node_id}/versions
 
 The Corpus MUST return every version of the node. The index derives the chain
 from `supersedes_cid`.
+
+#### 5.4.8 Retrieve Verification Receipts for a Solution
+
+```
+GET /nodes/{cid}/verifications
+```
+
+The Corpus MUST return the Verification Receipts targeting the Recipe with the
+given CID. The response is a JSON:API resource collection where each resource
+has `type` `verifications`, a `self` link at `/nodes/{receipt_cid}` for the
+receipt node, and attributes `target`, `environment_hash`, `public_key`,
+`timestamp`, `valid_until`, and `test_suite` with `total`, `passed`, and
+`failed` counts. Receipts MUST be ordered newest first.
+
+If the Recipe does not exist, the Corpus MUST return `404 Not Found`. The Corpus
+MUST return `405 Method Not Allowed` for any method other than `GET`.
 
 ### 5.5 Error Responses
 

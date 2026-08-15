@@ -17,8 +17,12 @@ Stack: Deno + TypeScript. MVP = Problem / Recipe / Verification triangle.
 - [x] `sign.ts`: Ed25519 via built-in `node:crypto` (no noble/postgres deps)
 - [x] `cid.ts`: CIDv1 (dag-json codec, sha2-256, base32)
 - [x] Common `osk` JSON Schema
-- [x] `problem` JSON Schema (severity enum, >=1 symptom, agent_context optional)
-- [x] `recipe` JSON Schema (language id, code body, caveats)
+- [x] `problem` JSON Schema (severity enum, >=1 symptom, agent_context optional,
+      optional summary/impact/reproduction/diagnosis/tags/references)
+- [x] `recipe` JSON Schema (language id, code body, caveats, optional
+      summary/prerequisites/steps/verification/tags/references)
+- [x] `guide` JSON Schema (spec 3.4: epistemic_status, sections with depth +
+      claim verification, prerequisites, caveats)
 - [x] `verification` JSON Schema (hex64 env hash, >=1 test case)
 - [x] Cross-field checks (total = passed + failed = cases.length = fail count)
 - [x] Tests: serialization stability, CID determinism, signature round-trip
@@ -65,8 +69,8 @@ Stack: Deno + TypeScript. MVP = Problem / Recipe / Verification triangle.
 
 > HTTP client to the API. `deno task cli -- <args>`.
 
-- [x] `keygen`, `node template` (problem only), `node create`, `verify`, `get`,
-      `search`
+- [x] `keygen`, `node template` (problem, recipe, guide), `node create`,
+      `verify`, `get`, `search`
 - [x] End-to-end smoke test passed
 
 ---
@@ -152,7 +156,7 @@ Stack: Deno + TypeScript. MVP = Problem / Recipe / Verification triangle.
         then `index.close()` then exit 0
   - [x] `startServer` returns the `Deno.serve` server handle (options object:
         `{ port, hostname }`)
-  - [x] `SqliteQueryIndex.close()` is idempotent (double-close safe)
+  - [x] `SqliteNodeStore.close()` is idempotent (double-close safe)
 - [x] Configurable base URL (server.ts, main.ts)
   - [x] Env `CORPUS_BASE_URL` used for `self`/`related`/entry-point links
   - [x] Fall back to request origin when unset
@@ -231,17 +235,47 @@ Stack: Deno + TypeScript. MVP = Problem / Recipe / Verification triangle.
   - [x] GitHub Actions CI: fmt:check, lint, check, test, cov, cov:report
   - [x] `README.md`, `LICENSE` (MIT), `THIRD_PARTY_NOTICES.md`
 
+## Phase 14 — Knowledge expansion (schemas, guides, search, UI)
+
+- [x] Enriched `Problem` and `Recipe` payloads with optional detail fields
+      (summary, impact, reproduction, diagnosis, steps, prerequisites,
+      verification, tags, references); all optional so stored nodes stay valid
+- [x] `Guide` node type per spec 3.4
+  - [x] `guide.json` schema + `GuidePayload` in core types
+  - [x] `src/nodetypes/guide.ts`: title extraction, lifecycle, prerequisites
+        relationship, cross-field checks (verified claims require
+        demonstration + playground_receipt; heuristic requires caveats;
+        source_attestation caps status at heuristic)
+  - [x] Registered in the node-type registry (auto-derived schema + routes)
+- [x] Title search
+  - [x] `SCHEMA_V2` migration adds a `title` column + index (db.ts)
+  - [x] `NodeTypeModule.title()` populated at index time (node_store.ts)
+  - [x] `filter[title]` case-insensitive substring match (search + API)
+- [x] Verification receipts endpoint
+  - [x] `GET /nodes/{cid}/verifications` (server.ts) via
+        `getReceiptsFor(solutionCid)`
+- [x] Deepened demo data (`scripts/seed.ts`): 6 detailed problems, 4 detailed
+      recipes, 3 guides, 5 verification receipts; idempotent and deterministic
+- [x] Web UI redesign (web/)
+  - [x] GitHub-dark theme tokens (semantic surface/text/accent colors, AA
+        contrast, focus-visible rings, reduced-motion support)
+  - [x] Hero + stats, search box, Guides tab, receipts list on recipe detail,
+        guide/problem/recipe detail renderers
+- [x] Tests: schema validation for enriched fields + guide rules, fixtures, CLI
+      template validation, API guides/schema/receipts/search, storage migration
+      v1→v2 + title search
+
 ---
 
 ## Post-MVP (tracked, not in scope)
 
-- [ ] Guide, Reference, Comparison, Improvement, Blueprint nodes (5 of 8 spec
-      types)
+- [ ] Reference, Comparison, Improvement, Blueprint nodes (4 of 8 spec types;
+      Guide shipped in Phase 14)
 - [ ] Release-feed watcher that auto-resolves current versions (spec 6.3);
       version-pin evaluation shipped in Phase 13
 - [ ] Real sandbox replay infra (the trust gate wiring lands in Phase 8)
 - [ ] Reputation/rate limits/proof-of-work (spec 5.5 deferral)
-- [ ] Web view + contribution form
+- [ ] Contribution form (read-only web view shipped in Phase 14)
 - [ ] MCP adapter
 - [ ] Postgres backend swap
 
@@ -256,3 +290,6 @@ Stack: Deno + TypeScript. MVP = Problem / Recipe / Verification triangle.
   triggers never evaluated; no index rebuild; no sandbox timeout; UNIQUE-race
   500s; lax PORT/registry/CLI error handling; 25 unformatted files; no CI,
   README, LICENSE, or third-party notices.
+- 2026-08-15: knowledge expansion. Added Guide node type, enriched
+  Problem/Recipe payloads, title search (SCHEMA_V2), verification receipts
+  endpoint, deeper demo seed data (13 nodes), and a GitHub-dark web UI.
