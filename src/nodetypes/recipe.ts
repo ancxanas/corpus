@@ -51,6 +51,9 @@ export const recipeModule: NodeTypeModule = {
       },
     };
   },
+  title(node) {
+    return isRecipe(node) ? node.payload.recipe.title : null;
+  },
   meta() {
     return { severity: null, framework_name: null };
   },

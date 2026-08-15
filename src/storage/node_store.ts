@@ -92,6 +92,7 @@ function rowToIndexedNode(row: Record<string, unknown>): IndexedNode {
     last_verified: row.last_verified as string,
     severity: row.severity as string | null,
     framework_name: row.framework_name as string | null,
+    title: row.title as string | null,
     created_at: row.created_at as string,
     head: (row.head as number) === 1,
     node,
@@ -166,8 +167,8 @@ export class SqliteNodeStore implements NodeStore {
       db.prepare(
         `INSERT INTO nodes (cid, node_id, node_type, version_seq, supersedes_cid, author_public_key,
            author_declared_status, effective_status, confidence_score, last_verified,
-           severity, framework_name, created_at, head, node_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           severity, framework_name, title, created_at, head, node_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         cid,
         nodeId,
@@ -181,6 +182,7 @@ export class SqliteNodeStore implements NodeStore {
         node.osk.knowledge_lifecycle.last_verified,
         meta.severity,
         meta.framework_name,
+        registry[node.osk.node_type].title(node),
         createdAt,
         0,
         canonicalString(node),
@@ -438,10 +440,16 @@ export class SqliteNodeStore implements NodeStore {
       public_key: "author_public_key",
       severity: "severity",
       framework_name: "framework_name",
+      title: "title",
     };
     for (const [key, value] of Object.entries(f)) {
       const col = columnMap[key];
       if (col === undefined || value === undefined) {
+        continue;
+      }
+      if (key === "title") {
+        where.push(`${col} LIKE ? COLLATE NOCASE`);
+        params.push(`%${String(value)}%`);
         continue;
       }
       where.push(`${col} = ?`);

@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
+import { DatabaseSync } from "node:sqlite";
 import { SqliteNodeStore } from "../src/storage/node_store.ts";
 import { FileBlockstore } from "../src/storage/blockstore.ts";
 import {
@@ -578,4 +579,110 @@ Deno.test("search filters by node_type and severity", async () => {
   });
   assertEquals(none.total, 0);
   await Deno.remove(env.dir, { recursive: true });
+});
+
+Deno.test("search matches title case-insensitively", async () => {
+  const env = await makeEnv();
+  const indexed = await env.index.getNode(env.problemCid);
+  assertEquals(indexed?.title, "Process crashes on large input");
+
+  const exact = await env.index.search({
+    filter: { title: "Process crashes" },
+    limit: 10,
+    offset: 0,
+  });
+  assertEquals(exact.total, 1);
+
+  const lower = await env.index.search({
+    filter: { title: "crashes on large" },
+    limit: 10,
+    offset: 0,
+  });
+  assertEquals(lower.total, 1);
+
+  const missing = await env.index.search({
+    filter: { title: "unrelated" },
+    limit: 10,
+    offset: 0,
+  });
+  assertEquals(missing.total, 0);
+  await Deno.remove(env.dir, { recursive: true });
+});
+
+Deno.test("search title does not match recipes by node payload only", async () => {
+  const env = await makeEnv();
+  const recipes = await env.index.search({
+    filter: { node_type: "Recipe" },
+    limit: 10,
+    offset: 0,
+  });
+  assertEquals(recipes.total, 1);
+  const byTitle = await env.index.search({
+    filter: { node_type: "Recipe", title: "Process crashes" },
+    limit: 10,
+    offset: 0,
+  });
+  assertEquals(byTitle.total, 0);
+  await Deno.remove(env.dir, { recursive: true });
+});
+
+Deno.test("v1 database migrates to v2 and indexes titles", async () => {
+  const dir = tempDir();
+  const dbPath = `${dir}/index.db`;
+  await Deno.mkdir(dir, { recursive: true });
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    CREATE TABLE nodes (
+      cid TEXT PRIMARY KEY,
+      node_id TEXT NOT NULL,
+      node_type TEXT NOT NULL,
+      version_seq INTEGER NOT NULL,
+      supersedes_cid TEXT,
+      author_public_key TEXT NOT NULL,
+      author_declared_status TEXT NOT NULL,
+      effective_status TEXT NOT NULL,
+      confidence_score REAL NOT NULL DEFAULT 0,
+      last_verified TEXT NOT NULL,
+      severity TEXT,
+      framework_name TEXT,
+      created_at TEXT NOT NULL,
+      head INTEGER NOT NULL DEFAULT 1,
+      node_json TEXT NOT NULL
+    );
+    CREATE TABLE verifications (
+      receipt_cid TEXT PRIMARY KEY,
+      problem_cid TEXT NOT NULL,
+      solution_cid TEXT NOT NULL,
+      environment_hash TEXT NOT NULL,
+      public_key TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      valid_until TEXT,
+      total INTEGER NOT NULL,
+      passed INTEGER NOT NULL,
+      failed INTEGER NOT NULL
+    );
+    CREATE TABLE deprecation_triggers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      node_cid TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      versioning_scheme TEXT NOT NULL,
+      condition TEXT NOT NULL
+    );
+    PRAGMA user_version = 1;
+  `);
+  db.close();
+
+  const store = new SqliteNodeStore(dbPath);
+  await store.init();
+  const authorKey = generateKeyPair();
+  const node = signed(
+    problemNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
+  const cid = await cidOf(node);
+  await store.indexNode(node, cid, new Date().toISOString());
+  const indexed = await store.getNode(cid);
+  assertEquals(indexed?.title, "Process crashes on large input");
+  await store.close();
+  await Deno.remove(dir, { recursive: true });
 });

@@ -274,6 +274,16 @@ export function createApp(
         return await getNode(request, segments[1]!, baseUrl);
       }
 
+      if (
+        segments[0] === "nodes" && segments.length === 3 &&
+        segments[2] === "verifications"
+      ) {
+        if (method !== "GET") {
+          return methodNotAllowed("GET");
+        }
+        return await getReceipts(segments[1]!, baseUrl);
+      }
+
       if (segments[0] === "nodes" && segments.length === 3) {
         if (method !== "GET") {
           return methodNotAllowed("GET");
@@ -542,6 +552,43 @@ export function createApp(
     );
     const resources = nodes.map((n) => serializeResource(n, baseUrl));
     return jsonResponse(document(resources, { baseUrl }));
+  }
+
+  async function getReceipts(
+    cid: string,
+    baseUrl: string,
+  ): Promise<Response> {
+    const indexed = await store.getNode(cid);
+    if (!indexed) {
+      return jsonResponse(
+        errorDocument([{
+          status: "404",
+          title: "not found",
+          detail: `No node with CID ${cid}.`,
+        }]),
+        404,
+      );
+    }
+    const receipts = await store.getReceiptsFor(cid);
+    const resources = receipts.map((r) => ({
+      type: "verifications",
+      id: r.receipt_cid,
+      links: { self: `${baseUrl}/nodes/${r.receipt_cid}` },
+      attributes: {
+        target: {
+          problem_id: { "/": r.problem_cid },
+          solution_id: { "/": r.solution_cid },
+        },
+        environment_hash: r.environment_hash,
+        public_key: r.public_key,
+        timestamp: r.timestamp,
+        valid_until: r.valid_until,
+        test_suite: { total: r.total, passed: r.passed, failed: r.failed },
+      },
+    }));
+    return jsonResponse(
+      document(resources, { baseUrl, meta: { total: receipts.length } }),
+    );
   }
 
   async function searchNodes(

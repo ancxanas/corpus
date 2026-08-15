@@ -222,6 +222,47 @@ Deno.test("GET /nodes?filter[node_type]=recipes returns only recipes", async () 
   await Deno.remove(dir, { recursive: true });
 });
 
+Deno.test("GET /nodes?filter[title] searches case-insensitively", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(
+    handler,
+    "/nodes?filter[title]=process%20crashes",
+  );
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  assertEquals(body.meta.total, 1);
+  assertEquals(body.data[0].type, "problems");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /nodes/{cid}/verifications returns receipts", async () => {
+  const { handler, recipeCid, dir } = await makeServer();
+  const res = await req(handler, `/nodes/${recipeCid}/verifications`);
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  assertEquals(body.meta.total, 1);
+  assertEquals(body.data[0].type, "verifications");
+  assertEquals(typeof body.data[0].id, "string");
+  assertEquals(body.data[0].attributes.test_suite.passed, 2);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /nodes/{cid}/verifications 404s for unknown node", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, `/nodes/${"b".repeat(61)}/verifications`);
+  assertEquals(res.status, 404);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /nodes/{cid}/verifications is read-only", async () => {
+  const { handler, recipeCid, dir } = await makeServer();
+  const res = await req(handler, `/nodes/${recipeCid}/verifications`, {
+    method: "DELETE",
+  });
+  assertEquals(res.status, 405);
+  await Deno.remove(dir, { recursive: true });
+});
+
 Deno.test("GET /nodes/by-node-id returns head and versions relationship", async () => {
   const { handler, index, authorKey, dir } = await makeServer();
   const node = problemNode(authorKey.publicKeyHex, { title: "v1" });

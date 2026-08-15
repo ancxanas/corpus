@@ -59,6 +59,9 @@ export const problemModule: NodeTypeModule = {
       },
     };
   },
+  title(node) {
+    return isProblem(node) ? node.payload.problem.title : null;
+  },
   meta(node) {
     if (!isProblem(node)) {
       return { severity: null, framework_name: null };

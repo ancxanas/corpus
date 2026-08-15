@@ -51,9 +51,17 @@ CREATE INDEX IF NOT EXISTS idx_nodes_confidence ON nodes(confidence_score);
 CREATE INDEX IF NOT EXISTS idx_verif_solution ON verifications(solution_cid);
 `;
 
+const SCHEMA_V2 = `
+ALTER TABLE nodes ADD COLUMN title TEXT;
+CREATE INDEX IF NOT EXISTS idx_nodes_title ON nodes(title);
+`;
+
 const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
   (db) => {
     db.exec(SCHEMA_V1);
+  },
+  (db) => {
+    db.exec(SCHEMA_V2);
   },
 ];
 

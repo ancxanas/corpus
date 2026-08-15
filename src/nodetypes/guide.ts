@@ -43,6 +43,9 @@ export const guideModule: NodeTypeModule = {
       },
     };
   },
+  title(node) {
+    return isGuide(node) ? node.payload.guide.title : null;
+  },
   meta() {
     return { severity: null, framework_name: null };
   },

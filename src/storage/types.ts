@@ -20,6 +20,7 @@ export interface IndexedNode {
   last_verified: string;
   severity: string | null;
   framework_name: string | null;
+  title: string | null;
   created_at: string;
   head: boolean;
   node: Node;
@@ -45,6 +46,7 @@ export interface SearchFilter {
   public_key?: string;
   severity?: string;
   framework_name?: string;
+  title?: string;
   [key: string]: unknown;
 }
 

@@ -15,6 +15,9 @@ export const verificationModule: NodeTypeModule = {
   nodeType: "Verification",
   plural: "verifications",
   schemaFile: "verification.json",
+  title() {
+    return null;
+  },
   meta() {
     return { severity: null, framework_name: null };
   },

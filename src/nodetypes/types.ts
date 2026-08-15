@@ -27,6 +27,7 @@ export interface NodeTypeModule {
   plural: string;
   schemaFile: string;
   template?: (publicKey: string) => Record<string, unknown>;
+  title(node: Node): string | null;
   meta(node: Node): NodeMeta;
   lifecycle(declared: LifecycleStatus, verified: boolean): EffectiveStatus;
   relationships(node: Node): RelationshipDef[];
