@@ -34,6 +34,7 @@
     monospace;
   --maxw: 1100px;
   --topbar-h: 56px;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
 }
 
 * {
@@ -307,6 +308,7 @@ button {
 .toolbar select {
   height: 32px;
   padding: 0 26px 0 10px;
+  appearance: none;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface) var(--chevron) no-repeat right 8px center;

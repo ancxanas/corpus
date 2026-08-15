@@ -64,6 +64,7 @@ const view = document.getElementById("view");
 const pagination = document.getElementById("pagination");
 const searchInput = document.getElementById("search");
 let searchTimer = null;
+let renderToken = 0;
 
 /* ---------- helpers ---------- */
 
@@ -211,7 +212,7 @@ function queryString() {
   if (state.status) {
     params.set("filter[effective_status]", state.status);
   }
-  if (state.severity && state.collection === "problems") {
+  if (state.severity) {
     params.set("filter[severity]", state.severity);
   }
   if (state.search) {
@@ -346,9 +347,7 @@ function toolbarHtml() {
     ).join("")
   }
       </select>
-      <select id="severity" aria-label="Filter by severity" ${
-    state.collection === "problems" ? "" : "disabled"
-  }>
+      <select id="severity" aria-label="Filter by severity">
         ${
     SEVERITIES.map((s) =>
       `<option value="${s}" ${s === state.severity ? "selected" : ""}>${
@@ -460,6 +459,7 @@ function emptyBox() {
 }
 
 async function renderBrowse() {
+  const token = ++renderToken;
   pagination.hidden = true;
   view.innerHTML = `
     ${heroBlock()}
@@ -470,29 +470,48 @@ async function renderBrowse() {
 
   try {
     await fetchCounts();
+    if (token !== renderToken) return;
     const body = await api(`/nodes?${queryString()}`);
+    if (token !== renderToken) return;
     state.next = body.links?.next ?? null;
     state.prev = body.links?.prev ?? null;
     state.total = body.meta?.total ?? 0;
 
     const rows = (body.data ?? []).map(rowHtml).join("");
-    view.querySelector(".tabs").outerHTML = tabsHtml();
-    bindBrowseControls();
-    view.querySelector(".node-list").innerHTML = rows || emptyBox();
+    const tabsEl = view.querySelector(".tabs");
+    if (tabsEl) {
+      tabsEl.outerHTML = tabsHtml();
+      bindTabButtons();
+    }
+    const listEl = view.querySelector(".node-list");
+    if (listEl) {
+      listEl.innerHTML = rows || emptyBox();
+      view.querySelector("#clear-filters")?.addEventListener("click", () => {
+        state.status = "";
+        state.severity = "";
+        state.search = "";
+        searchInput.value = "";
+        renderBrowse();
+      });
+    }
     renderPagination();
   } catch (err) {
-    view.querySelector(".node-list").innerHTML = `
-      <div class="state-box">
-        ${icon("error")}
-        <h3>Could not load</h3>
-        <p>${esc(err.message)}</p>
-        <button class="btn" id="retry">Retry</button>
-      </div>`;
-    view.querySelector("#retry")?.addEventListener("click", renderBrowse);
+    if (token !== renderToken) return;
+    const listEl = view.querySelector(".node-list");
+    if (listEl) {
+      listEl.innerHTML = `
+        <div class="state-box">
+          ${icon("error")}
+          <h3>Could not load</h3>
+          <p>${esc(err.message)}</p>
+          <button class="btn" id="retry">Retry</button>
+        </div>`;
+      view.querySelector("#retry")?.addEventListener("click", renderBrowse);
+    }
   }
 }
 
-function bindBrowseControls() {
+function bindTabButtons() {
   for (const btn of view.querySelectorAll("[data-collection]")) {
     btn.addEventListener("click", () => {
       state.collection = btn.dataset.collection;
@@ -501,6 +520,10 @@ function bindBrowseControls() {
       renderBrowse();
     });
   }
+}
+
+function bindBrowseControls() {
+  bindTabButtons();
   view.querySelector("#status")?.addEventListener("change", (e) => {
     state.status = e.target.value;
     state.offset = 0;
@@ -708,6 +731,7 @@ function renderReceiptsPanel(receipts) {
 }
 
 async function renderDetail(cid) {
+  const token = ++renderToken;
   pagination.hidden = true;
   view.innerHTML = `
     <a class="back" href="#/">${icon("back")} Browse</a>
@@ -717,6 +741,7 @@ async function renderDetail(cid) {
     const body = await api(
       `/nodes/${encodeURIComponent(cid)}?include=relationships`,
     );
+    if (token !== renderToken) return;
     const resource = body.data;
     const osk = resource.attributes?.osk ?? {};
     const lifecycle = osk.knowledge_lifecycle ?? {};
@@ -729,6 +754,7 @@ async function renderDetail(cid) {
       payload.recipe ? fetchReceipts(resource.id) : Promise.resolve([]),
       fetchVersions(osk.node_id),
     ]);
+    if (token !== renderToken) return;
 
     const bodyHtml = payload.problem
       ? renderProblem(payload.problem)
@@ -782,6 +808,7 @@ async function renderDetail(cid) {
 
     bindCopyButtons();
   } catch (err) {
+    if (token !== renderToken) return;
     view.innerHTML = `
       <a class="back" href="#/">${icon("back")} Browse</a>
       <div class="error-box">
