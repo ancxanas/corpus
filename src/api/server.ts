@@ -238,18 +238,23 @@ export function createApp(
     const keys = [...new Set(replayed.map((r) => r.public_key))];
     const reps = keys.map((k) => store.keyReputation(k));
     const now = Date.now();
-    const ages = reps.map((r) =>
-      r.metrics.first_seen
-        ? Math.max(0, (now - Date.parse(r.metrics.first_seen)) / 86_400_000)
-        : Infinity
-    );
-    return {
+    const ages = reps
+      .map((r) =>
+        r.metrics.first_seen
+          ? Math.max(0, (now - Date.parse(r.metrics.first_seen)) / 86_400_000)
+          : null
+      )
+      .filter((age): age is number => age !== null);
+    const provenance: Record<string, unknown> = {
       receipt_count: receipts.length,
       replayed_count: replayed.length,
       distinct_keys: keys.length,
       has_trusted_verifier: reps.some((r) => r.trusted),
-      min_key_age_days: Math.round(Math.min(...ages)),
     };
+    if (ages.length > 0) {
+      provenance.min_key_age_days = Math.round(Math.min(...ages));
+    }
+    return provenance;
   }
 
   async function withProvenance(
