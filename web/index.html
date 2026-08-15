@@ -4,8 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>The Corpus</title>
+    <link rel="stylesheet" href="/ui/styles.css" />
   </head>
   <body>
-    <h1>The Corpus</h1>
+    <header class="topbar">
+      <a class="brand" href="#/">The Corpus</a>
+      <span class="tagline">signed knowledge store</span>
+    </header>
+    <main id="view" aria-live="polite"></main>
+    <footer id="pagination" class="pagination" hidden></footer>
+    <script type="module" src="/ui/app.js"></script>
   </body>
 </html>

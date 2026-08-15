@@ -12,6 +12,8 @@ server. The system follows the OSK Specification v0.3.0 in
 - Ed25519 signed nodes. The signature binds node metadata and payload.
 - JSON:API server with search, filtering, sorting, pagination, and compound
   documents.
+- Read-only web UI for browsing, filtering, and inspecting nodes, served from
+  `/ui/`.
 - Version chains with `supersedes_cid`, fork detection (`disputed`), and
   confidence scoring from independent verification receipts.
 - Deprecation triggers evaluated against pinned versions.
@@ -32,7 +34,8 @@ deno task start
 ```
 
 The server listens on `http://0.0.0.0:8000`. Data lives in `data/` by default
-(`corpus.db` index, `blocks/` for IPLD blocks).
+(`corpus.db` index, `blocks/` for IPLD blocks). Open `http://localhost:8000/ui/`
+to browse and inspect nodes in the browser.
 
 Generate a key pair:
 
@@ -107,5 +110,6 @@ deno task check       # type-check entry points
 - `src/schema/` — JSON Schema definitions and validation
 - `src/storage/` — SQLite node store, blockstore, ingest, rebuild, status
 - `src/execution/` — playground registry and replay executors
-- `src/api/` — JSON:API server
+- `src/api/` — JSON:API server and static web UI serving
 - `src/cli/` — command line interface
+- `web/` — the read-only browser UI

@@ -714,6 +714,15 @@ Deno.test("GET /ui serves the index page", async () => {
   await Deno.remove(web, { recursive: true });
 });
 
+Deno.test("GET /ui uses the default web directory", async () => {
+  const { ingest, index, dir } = await makeServer();
+  const handler = createApp(ingest, index, { logger: () => {} });
+  const res = await req(handler, "/ui/");
+  assertEquals(res.status, 200);
+  assertEquals(await res.text().then((t) => t.includes("The Corpus")), true);
+  await Deno.remove(dir, { recursive: true });
+});
+
 Deno.test("GET /ui without a trailing slash serves the index page", async () => {
   const { ingest, index, dir } = await makeServer();
   const web = await webDirWith();

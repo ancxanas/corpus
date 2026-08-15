@@ -113,7 +113,7 @@ export function createApp(
   const corsOrigins = options.corsOrigins ?? [];
   const allowAllOrigins = corsOrigins.includes("*");
   const webDir =
-    (options.webDir ?? new URL("../web/", import.meta.url).pathname)
+    (options.webDir ?? new URL("../../web/", import.meta.url).pathname)
       .replace(/\/+$/, "");
 
   function serveStatic(segments: string[]): Response | null {
