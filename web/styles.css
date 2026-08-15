@@ -314,8 +314,15 @@ button {
   background: var(--surface) var(--chevron) no-repeat right 8px center;
   background-size: 12px;
   color: var(--text-secondary);
+  font-family: var(--font-sans);
   font-size: 13px;
   cursor: pointer;
+}
+
+.toolbar option {
+  font-family: var(--font-sans);
+  background-color: var(--surface-raised);
+  color: var(--text);
 }
 
 .toolbar select:hover {
