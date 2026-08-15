@@ -1,4 +1,4 @@
-import { SqliteQueryIndex } from "./storage/index.ts";
+import { SqliteNodeStore } from "./storage/node_store.ts";
 import { FileBlockstore } from "./storage/blockstore.ts";
 import { IngestService } from "./storage/ingest.ts";
 import { startServer } from "./api/server.ts";
@@ -26,10 +26,10 @@ try {
   throw e;
 }
 
-const index = new SqliteQueryIndex(config.dbPath, {
+const store = new SqliteNodeStore(config.dbPath, {
   versionPins: cachedVersionPins(config.versionsPath),
 });
-await index.init();
+await store.init();
 
 let registry: PlaygroundRegistry | null = null;
 const registryText = await Deno.readTextFile(config.registryPath).catch(
@@ -58,12 +58,12 @@ if (config.replay === "sandbox") {
 
 const ingest = new IngestService(
   new FileBlockstore({ dir: config.blockDir }),
-  index,
+  store,
   registry,
   replay,
 );
 
-const server = startServer(ingest, index, {
+const server = startServer(ingest, store, {
   port: config.port,
   hostname: config.host,
   baseUrl: config.baseUrl,
@@ -84,7 +84,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   console.log(`${signal} received: shutting down`);
   await server.shutdown();
-  await index.close();
+  await store.close();
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -94,4 +94,4 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 await server.finished;
-await index.close();
+await store.close();

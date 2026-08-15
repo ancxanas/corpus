@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { SqliteQueryIndex } from "../src/storage/index.ts";
+import { SqliteNodeStore } from "../src/storage/node_store.ts";
 import { FileBlockstore } from "../src/storage/blockstore.ts";
 import {
   IngestService,
@@ -24,7 +24,7 @@ function tempDir(): string {
 interface Env {
   dir: string;
   ingest: IngestService;
-  index: SqliteQueryIndex;
+  index: SqliteNodeStore;
   authorKey: { publicKeyHex: string; secretKeyHex: string };
   verifierKey: { publicKeyHex: string; secretKeyHex: string };
   problemCid: string;
@@ -33,7 +33,7 @@ interface Env {
 
 async function makeEnv(): Promise<Env> {
   const dir = tempDir();
-  const index = new SqliteQueryIndex(`${dir}/index.db`);
+  const index = new SqliteNodeStore(`${dir}/index.db`);
   await index.init();
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),
@@ -359,7 +359,7 @@ Deno.test("recipe with expired valid_until reads as stale", async () => {
 
 Deno.test("deprecation trigger matching the pinned version sets stale", async () => {
   const dir = tempDir();
-  const index = new SqliteQueryIndex(`${dir}/index.db`, {
+  const index = new SqliteNodeStore(`${dir}/index.db`, {
     versionPins: () => ({ deno: "3.0.0" }),
   });
   await index.init();
@@ -388,7 +388,7 @@ Deno.test("deprecation trigger matching the pinned version sets stale", async ()
 
 Deno.test("deprecation trigger below the pinned version stays draft", async () => {
   const dir = tempDir();
-  const index = new SqliteQueryIndex(`${dir}/index.db`, {
+  const index = new SqliteNodeStore(`${dir}/index.db`, {
     versionPins: () => ({ deno: "2.0.0" }),
   });
   await index.init();
@@ -417,7 +417,7 @@ Deno.test("deprecation trigger below the pinned version stays draft", async () =
 
 Deno.test("deprecation trigger stays stale even with a passing receipt", async () => {
   const dir = tempDir();
-  const index = new SqliteQueryIndex(`${dir}/index.db`, {
+  const index = new SqliteNodeStore(`${dir}/index.db`, {
     versionPins: () => ({ deno: "3.0.0" }),
   });
   await index.init();

@@ -1,5 +1,5 @@
 import type { Blockstore } from "./blockstore.ts";
-import type { QueryIndex } from "./index.ts";
+import type { NodeStore } from "./node_store.ts";
 import { verifyNodeSignature } from "../core/sign.ts";
 import type { Node } from "../core/types.ts";
 
@@ -37,7 +37,7 @@ function orderByDepth(nodes: Indexed[]): Indexed[] {
 
 export async function rebuildIndex(
   blockstore: Blockstore,
-  index: QueryIndex,
+  store: NodeStore,
 ): Promise<number> {
   const blocks = await blockstore.list();
   const nodes: Indexed[] = [];
@@ -50,13 +50,13 @@ export async function rebuildIndex(
     const entry = { cid: block.cid, node };
     (node.osk.node_type === "Verification" ? receipts : nodes).push(entry);
   }
-  await index.reset();
+  await store.reset();
   const now = new Date().toISOString();
   for (const { cid, node } of orderByDepth(nodes)) {
-    await index.indexNode(node, cid, now);
+    await store.indexNode(node, cid, now);
   }
   for (const { cid, node } of receipts) {
-    await index.addVerification(node, cid, now);
+    await store.addVerification(node, cid, now);
   }
   return blocks.length;
 }

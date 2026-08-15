@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { SqliteQueryIndex } from "../src/storage/index.ts";
+import { SqliteNodeStore } from "../src/storage/node_store.ts";
 import { FileBlockstore } from "../src/storage/blockstore.ts";
 import {
   IngestService,
@@ -33,7 +33,7 @@ function tempDir(): string {
 
 async function env() {
   const dir = tempDir();
-  const index = new SqliteQueryIndex(`${dir}/index.db`);
+  const index = new SqliteNodeStore(`${dir}/index.db`);
   await index.init();
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),

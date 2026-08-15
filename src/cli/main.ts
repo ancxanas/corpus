@@ -2,7 +2,7 @@ import { generateKeyPair, signNode } from "../core/sign.ts";
 import { uuidv7 } from "../core/uuidv7.ts";
 import type { Node } from "../core/types.ts";
 import { templateFor } from "../nodetypes/registry.ts";
-import { SqliteQueryIndex } from "../storage/index.ts";
+import { SqliteNodeStore } from "../storage/node_store.ts";
 import { FileBlockstore } from "../storage/blockstore.ts";
 import { rebuildIndex } from "../storage/rebuild.ts";
 
@@ -317,7 +317,7 @@ async function cmdSearch(flags: Flags): Promise<void> {
 
 async function cmdRebuild(flags: Flags): Promise<void> {
   const root = flags["data-dir"] ?? Deno.env.get("CORPUS_DATA_DIR") ?? "data";
-  const index = new SqliteQueryIndex(`${root}/corpus.db`);
+  const index = new SqliteNodeStore(`${root}/corpus.db`);
   await index.init();
   const blockstore = new FileBlockstore({ dir: `${root}/blocks` });
   const count = await rebuildIndex(blockstore, index);

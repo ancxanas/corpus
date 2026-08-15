@@ -8,7 +8,7 @@ import type {
 } from "../core/types.ts";
 import { isVerification } from "../nodetypes/registry.ts";
 import type { Blockstore } from "./blockstore.ts";
-import type { QueryIndex } from "./index.ts";
+import type { NodeStore } from "./node_store.ts";
 import type { IndexedNode } from "./types.ts";
 import type { PlaygroundRegistry } from "../execution/registry.ts";
 import {
@@ -97,18 +97,18 @@ export interface IngestResult {
 
 export class IngestService {
   #blockstore: Blockstore;
-  #index: QueryIndex;
+  #store: NodeStore;
   #registry: PlaygroundRegistry | null;
   #replay: ReplayExecutor;
 
   constructor(
     blockstore: Blockstore,
-    index: QueryIndex,
+    store: NodeStore,
     registry: PlaygroundRegistry | null = null,
     replay: ReplayExecutor = new StubReplayExecutor(),
   ) {
     this.#blockstore = blockstore;
-    this.#index = index;
+    this.#store = store;
     this.#registry = registry;
     this.#replay = replay;
   }
@@ -123,11 +123,11 @@ export class IngestService {
     }
     const cid = await this.#blockstore.put(canonicalBytes(node));
     try {
-      const existing = await this.#index.getNode(cid);
+      const existing = await this.#store.getNode(cid);
       if (existing) {
         return existing;
       }
-      return await this.#index.indexNode(node, cid, new Date().toISOString());
+      return await this.#store.indexNode(node, cid, new Date().toISOString());
     } catch (e) {
       await this.#blockstore.delete(cid).catch(() => {});
       throw e;
@@ -159,15 +159,15 @@ export class IngestService {
           "environment hash is not registered in the playground registry",
       }]);
     }
-    const precheck = await this.#index.precheckVerification(node);
+    const precheck = await this.#store.precheckVerification(node);
     if (precheck.length > 0) {
       throw new ValidationError(precheck);
     }
     if (this.#replay.enforced) {
-      const solution = await this.#index.getNode(
+      const solution = await this.#store.getNode(
         node.payload.verification.target.solution_id["/"],
       );
-      const problem = await this.#index.getNode(
+      const problem = await this.#store.getNode(
         node.payload.verification.target.problem_id["/"],
       );
       const env = this.#registry?.lookup(
@@ -194,8 +194,8 @@ export class IngestService {
     }
     const cid = await this.#blockstore.put(canonicalBytes(node));
     try {
-      if (!await this.#index.hasVerification(cid)) {
-        await this.#index.addVerification(node, cid, new Date().toISOString());
+      if (!await this.#store.hasVerification(cid)) {
+        await this.#store.addVerification(node, cid, new Date().toISOString());
       }
     } catch (e) {
       await this.#blockstore.delete(cid).catch(() => {});

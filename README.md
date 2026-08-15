@@ -105,7 +105,7 @@ deno task check       # type-check entry points
 
 - `src/core/` — CIDs, canonical serialization, signatures, UUIDs
 - `src/schema/` — JSON Schema definitions and validation
-- `src/storage/` — SQLite index, blockstore, ingest, rebuild, status
+- `src/storage/` — SQLite node store, blockstore, ingest, rebuild, status
 - `src/execution/` — playground registry and replay executors
 - `src/api/` — JSON:API server
 - `src/cli/` — command line interface

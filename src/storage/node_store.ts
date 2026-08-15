@@ -31,7 +31,7 @@ function rollbackQuietly(db: DatabaseSync): void {
   }
 }
 
-export interface QueryIndex {
+export interface NodeStore {
   init(): Promise<void>;
   reset(): Promise<void>;
   indexNode(node: Node, cid: string, createdAt: string): Promise<IndexedNode>;
@@ -98,7 +98,7 @@ function rowToIndexedNode(row: Record<string, unknown>): IndexedNode {
   };
 }
 
-export class SqliteQueryIndex implements QueryIndex {
+export class SqliteNodeStore implements NodeStore {
   #db: DatabaseSync;
   #closed = false;
   #versionPins: () => VersionPin;
@@ -215,7 +215,7 @@ export class SqliteQueryIndex implements QueryIndex {
     return indexed;
   }
 
-  // Async to match the QueryIndex contract. The SQLite driver is synchronous,
+  // Async to match the NodeStore contract. The SQLite driver is synchronous,
   // so awaits must stay out of the BEGIN/COMMIT block: a concurrent caller on
   // the shared connection would otherwise interleave inside the transaction.
   // deno-lint-ignore require-await

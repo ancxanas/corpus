@@ -2,7 +2,7 @@ import type { IndexedNode } from "../storage/types.ts";
 import type { Node } from "../core/types.ts";
 import { pluralOf, registry } from "../nodetypes/registry.ts";
 import { type ResourceId, serializeResource } from "./jsonapi.ts";
-import type { QueryIndex } from "../storage/index.ts";
+import type { NodeStore } from "../storage/node_store.ts";
 
 export interface RelationshipView {
   related: string;
@@ -10,16 +10,16 @@ export interface RelationshipView {
 }
 
 export async function typeOfLinked(
-  index: QueryIndex,
+  store: NodeStore,
   cid: string,
   fallback: string,
 ): Promise<string> {
-  const target = await index.getNode(cid);
+  const target = await store.getNode(cid);
   return target ? pluralOf(target.node_type) : fallback;
 }
 
 export async function extractRelationships(
-  index: QueryIndex,
+  store: NodeStore,
   node: Node,
   cid: string,
 ): Promise<Record<string, RelationshipView>> {
@@ -28,7 +28,7 @@ export async function extractRelationships(
     result[def.name] = {
       related: `/nodes/${cid}/${def.name}`,
       data: await Promise.all(def.links.map(async (l) => ({
-        type: await typeOfLinked(index, l.cid, l.fallback),
+        type: await typeOfLinked(store, l.cid, l.fallback),
         id: l.cid,
         ...(l.meta ? { meta: l.meta } : {}),
       }))),
@@ -45,7 +45,7 @@ export function linkedCidsOf(
 }
 
 export async function serializeWithIncludes(
-  index: QueryIndex,
+  store: NodeStore,
   indexed: IndexedNode,
   baseUrl: string,
   includePaths: string[],
@@ -54,7 +54,7 @@ export async function serializeWithIncludes(
   included: Record<string, unknown>[];
 }> {
   const relationships = await extractRelationships(
-    index,
+    store,
     indexed.node,
     indexed.cid,
   );
@@ -68,7 +68,7 @@ export async function serializeWithIncludes(
         continue;
       }
       seen.add(cid);
-      const target = await index.getNode(cid);
+      const target = await store.getNode(cid);
       if (target) {
         included.push(serializeResource(target, baseUrl));
       }

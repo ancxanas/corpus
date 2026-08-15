@@ -1,5 +1,5 @@
 import type { IngestService } from "../storage/ingest.ts";
-import type { QueryIndex } from "../storage/index.ts";
+import type { NodeStore } from "../storage/node_store.ts";
 import type { Node } from "../core/types.ts";
 import {
   ReplayUnavailableError,
@@ -76,7 +76,7 @@ export interface CreateAppOptions {
 
 export function createApp(
   ingest: IngestService,
-  index: QueryIndex,
+  store: NodeStore,
   options: CreateAppOptions = {},
 ) {
   const bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT;
@@ -355,7 +355,7 @@ export function createApp(
     }
     const indexed = await ingest.ingestNode(node);
     const relationships = await extractRelationships(
-      index,
+      store,
       indexed.node,
       indexed.cid,
     );
@@ -407,9 +407,9 @@ export function createApp(
       );
     }
     const result = await ingest.ingestVerification(node);
-    const indexed = await index.getNode(result.cid);
+    const indexed = await store.getNode(result.cid);
     const relationships = indexed
-      ? await extractRelationships(index, indexed.node, indexed.cid)
+      ? await extractRelationships(store, indexed.node, indexed.cid)
       : {};
     const resource = indexed
       ? serializeResource(indexed, baseUrl, relationships)
@@ -431,7 +431,7 @@ export function createApp(
     cid: string,
     baseUrl: string,
   ): Promise<Response> {
-    const indexed = await index.getNode(cid);
+    const indexed = await store.getNode(cid);
     if (!indexed) {
       return jsonResponse(
         errorDocument([{
@@ -447,7 +447,7 @@ export function createApp(
       s.trim()
     ).filter(Boolean);
     const { resource, included } = await serializeWithIncludes(
-      index,
+      store,
       indexed,
       baseUrl,
       include,
@@ -460,7 +460,7 @@ export function createApp(
     name: string,
     baseUrl: string,
   ): Promise<Response> {
-    const indexed = await index.getNode(cid);
+    const indexed = await store.getNode(cid);
     if (!indexed) {
       return jsonResponse(
         errorDocument([{
@@ -472,7 +472,7 @@ export function createApp(
       );
     }
     const cids = linkedCidsOf(indexed.node, name);
-    const nodes = (await Promise.all(cids.map((c) => index.getNode(c)))).filter(
+    const nodes = (await Promise.all(cids.map((c) => store.getNode(c)))).filter(
       (n): n is NonNullable<typeof n> => n !== null,
     );
     const resources = nodes.map((n) => serializeResource(n, baseUrl));
@@ -513,11 +513,11 @@ export function createApp(
     const offset = Math.max(Number(params.get("page[offset]")) || 0, 0);
     const sort = (params.get("sort") ?? "-created_at").replace(/^-/, "");
 
-    const result = await index.search({ filter, sort, limit, offset });
+    const result = await store.search({ filter, sort, limit, offset });
     const resources = [];
     for (const n of result.data) {
       const relationships = await extractRelationships(
-        index,
+        store,
         n.node,
         n.cid,
       );
@@ -563,7 +563,7 @@ export function createApp(
   ): Promise<Response> {
     const nodeId = segments[2]!;
     if (segments.length === 4 && segments[3] === "versions") {
-      const versions = await index.getVersions(nodeId);
+      const versions = await store.getVersions(nodeId);
       if (versions.length === 0) {
         return jsonResponse(
           errorDocument([{
@@ -580,7 +580,7 @@ export function createApp(
       );
     }
 
-    const heads = await index.getHeadVersion(nodeId);
+    const heads = await store.getHeadVersion(nodeId);
     if (heads.length === 0) {
       return jsonResponse(
         errorDocument([{
@@ -610,7 +610,7 @@ export function createApp(
       );
     }
     const head = heads[0]!;
-    const versions = await index.getVersions(nodeId);
+    const versions = await store.getVersions(nodeId);
     const relationship = {
       related: `${baseUrl}/nodes/by-node-id/${nodeId}/versions`,
       data: versions.map((v) =>
@@ -618,7 +618,7 @@ export function createApp(
       ),
     };
     const relationships = await extractRelationships(
-      index,
+      store,
       head.node,
       head.cid,
     );
@@ -657,10 +657,10 @@ export interface StartServerOptions {
 
 export function startServer(
   ingest: IngestService,
-  index: QueryIndex,
+  store: NodeStore,
   options: StartServerOptions = {},
 ) {
-  const handler = createApp(ingest, index, {
+  const handler = createApp(ingest, store, {
     bodyLimit: options.bodyLimit,
     baseUrl: options.baseUrl,
     corsOrigins: options.corsOrigins,

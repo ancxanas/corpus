@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { SqliteQueryIndex } from "../src/storage/index.ts";
+import { SqliteNodeStore } from "../src/storage/node_store.ts";
 import { FileBlockstore } from "../src/storage/blockstore.ts";
 import { IngestService } from "../src/storage/ingest.ts";
 import { rebuildIndex } from "../src/storage/rebuild.ts";
@@ -19,7 +19,7 @@ function tempDir(): string {
 
 async function buildCorpus() {
   const dir = tempDir();
-  const index = new SqliteQueryIndex(`${dir}/index.db`);
+  const index = new SqliteNodeStore(`${dir}/index.db`);
   await index.init();
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),
@@ -83,7 +83,7 @@ async function buildCorpus() {
 Deno.test("rebuild restores index, confidence, and heads", async () => {
   const built = await buildCorpus();
   const { dir, problemCid, recipeCid, v2 } = built;
-  const fresh = new SqliteQueryIndex(`${dir}/index.db`);
+  const fresh = new SqliteNodeStore(`${dir}/index.db`);
   await fresh.init();
   const blockstore = new FileBlockstore({ dir: `${dir}/blocks` });
   const count = await rebuildIndex(blockstore, fresh);
@@ -112,7 +112,7 @@ Deno.test("rebuild restores index, confidence, and heads", async () => {
 
 Deno.test("rebuild rejects a block whose supersedes target is missing", async () => {
   const dir = tempDir();
-  const index = new SqliteQueryIndex(`${dir}/index.db`);
+  const index = new SqliteNodeStore(`${dir}/index.db`);
   await index.init();
   const blockstore = new FileBlockstore({ dir: `${dir}/blocks` });
   const authorKey = generateKeyPair();
@@ -126,7 +126,7 @@ Deno.test("rebuild rejects a block whose supersedes target is missing", async ()
   );
   await blockstore.put(canonicalBytes(orphan));
 
-  const fresh = new SqliteQueryIndex(`${dir}/index.db`);
+  const fresh = new SqliteNodeStore(`${dir}/index.db`);
   await fresh.init();
   await assertRejects(
     () => rebuildIndex(blockstore, fresh),

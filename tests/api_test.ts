@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { SqliteQueryIndex } from "../src/storage/index.ts";
+import { SqliteNodeStore } from "../src/storage/node_store.ts";
 import { FileBlockstore } from "../src/storage/blockstore.ts";
 import { IngestService } from "../src/storage/ingest.ts";
 import { generateKeyPair } from "../src/core/sign.ts";
@@ -19,7 +19,7 @@ function tempDir(): string {
 
 async function makeServer() {
   const dir = tempDir();
-  const index = new SqliteQueryIndex(`${dir}/index.db`);
+  const index = new SqliteNodeStore(`${dir}/index.db`);
   await index.init();
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),
@@ -515,7 +515,7 @@ Deno.test("responses carry X-Request-Id and the logger sees one line", async () 
 
 Deno.test("baseUrl option overrides self links", async () => {
   const dir = tempDir();
-  const index = new SqliteQueryIndex(`${dir}/index.db`);
+  const index = new SqliteNodeStore(`${dir}/index.db`);
   await index.init();
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),
@@ -602,7 +602,7 @@ Deno.test("pagination offset at and over the total yields empty data", async () 
   await Deno.remove(dir, { recursive: true });
 });
 
-class FlakyIndex extends SqliteQueryIndex {
+class FlakyStore extends SqliteNodeStore {
   override search(): never {
     throw new Error("boom");
   }
@@ -610,7 +610,7 @@ class FlakyIndex extends SqliteQueryIndex {
 
 Deno.test("internal errors map to 500 with a JSON:API error body", async () => {
   const dir = tempDir();
-  const flaky = new FlakyIndex(`${dir}/index.db`);
+  const flaky = new FlakyStore(`${dir}/index.db`);
   flaky.init();
   const ingest = new IngestService(
     new FileBlockstore({ dir: `${dir}/blocks` }),
