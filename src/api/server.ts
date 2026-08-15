@@ -38,6 +38,7 @@ import {
   unsupportedMediaType,
   unsupportedNodeTypeError,
 } from "./http.ts";
+import { buildOpenApiDocument, OPENAPI_MEDIA_TYPE } from "./openapi.ts";
 
 const SPEC_COLLECTIONS = [
   "problems",
@@ -63,6 +64,7 @@ function entryPoint(baseUrl: string): Record<string, unknown> {
       self: baseUrl,
       ...collectionLinks,
       schemas: `${baseUrl}/schemas/{node_type}`,
+      openapi: `${baseUrl}/openapi.json`,
       submit: `${baseUrl}/nodes`,
     },
   });
@@ -228,6 +230,16 @@ export function createApp(
       const staticResponse = serveStatic(segments);
       if (staticResponse !== null) {
         return staticResponse;
+      }
+
+      if (
+        segments.length === 1 && segments[0] === "openapi.json" &&
+        method === "GET"
+      ) {
+        const doc = await buildOpenApiDocument(baseUrl);
+        return new Response(JSON.stringify(doc, null, 2), {
+          headers: { "Content-Type": `${OPENAPI_MEDIA_TYPE}; charset=utf-8` },
+        });
       }
 
       if (!acceptsJsonApi(request)) {

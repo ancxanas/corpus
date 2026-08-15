@@ -96,6 +96,28 @@ tabs with counts, live title search (`/` or `Cmd/Ctrl-K` to focus), article
 layout for detail pages, per-recipe verification receipts, and version-chain
 navigation in the sidebar. Open `http://localhost:8000/ui/` to browse it.
 
+## HTTP API
+
+A machine-readable OpenAPI 3.1 document is served at `GET /openapi.json`. The
+JSON:API entrypoint at `GET /` links to it. All responses use the
+`application/vnd.api+json` media type unless noted.
+
+Key endpoints:
+
+- `GET /nodes` — search with `filter[...]`, `sort`, `page[limit]`,
+  `page[offset]`
+- `POST /nodes` — create a signed Problem, Recipe, or Guide node
+- `GET /nodes/{cid}` — fetch a node; add `?include=<relationship>` for compound
+  documents
+- `GET /nodes/{cid}/{relationship}` — `solutions`, `prerequisites`, or `target`
+- `GET /nodes/{cid}/verifications` — verification receipts for a node
+- `GET /nodes/by-node-id/{node_id}` — head version of a node; `.../versions` for
+  all versions
+- `POST /verifications` — submit a signed verification receipt
+- `GET /{collection}` — search pinned to `problems`, `recipes`, `guides`, or
+  `verifications`
+- `GET /schemas/{node_type}` — JSON Schema for a node type
+
 ## Configuration
 
 | Variable                | Default        | Purpose                                                                 |
