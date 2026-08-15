@@ -71,6 +71,21 @@ Rebuild the index from blocks:
 deno task cli -- rebuild --data-dir data
 ```
 
+## Demo data
+
+With the server running, seed a ready-made dataset (problems, recipes, and
+verifications spanning active, draft, disputed, stale, and deprecated states):
+
+```sh
+deno task start        # in one terminal
+deno task seed         # in another
+```
+
+Open `http://localhost:8000/ui/` to browse it. The seed writes three demo keys
+to `data/demo-key.json`, `data/verifier-key.json`, and `data/reviewer-key.json`,
+which the CLI can reuse. It is idempotent: re-running it skips nodes it already
+stored.
+
 ## Configuration
 
 | Variable                | Default        | Purpose                                                                 |

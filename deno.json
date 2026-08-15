@@ -13,11 +13,12 @@
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
-    "check": "deno check src/main.ts src/cli/main.ts",
+    "check": "deno check src/main.ts src/cli/main.ts scripts/seed.ts",
     "test": "deno test --allow-read --allow-env --allow-write --allow-net --allow-run",
     "cov": "deno test --allow-read --allow-env --allow-write --allow-net --allow-run --coverage=coverage --clean",
     "cov:report": "deno coverage coverage/ --exclude=node_modules --exclude=deno_modules",
     "start": "deno run --allow-net --allow-read --allow-write --allow-env src/main.ts",
-    "cli": "deno run --allow-net --allow-read --allow-write --allow-env src/cli/main.ts"
+    "cli": "deno run --allow-net --allow-read --allow-write --allow-env src/cli/main.ts",
+    "seed": "deno run --allow-net --allow-read --allow-write --allow-env scripts/seed.ts"
   }
 }
