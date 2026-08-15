@@ -67,6 +67,7 @@ const server = startServer(ingest, store, {
   port: config.port,
   hostname: config.host,
   baseUrl: config.baseUrl,
+  trustProxy: config.trustProxy,
   bodyLimit: config.maxBodyBytes,
   corsOrigins: config.corsOrigins,
 });

@@ -129,6 +129,7 @@ Key endpoints:
 | `PORT`                  | `8000`         | HTTP port                                                               |
 | `CORPUS_HOST`           | `0.0.0.0`      | Bind address                                                            |
 | `CORPUS_BASE_URL`       | request origin | Base URL used in JSON:API links                                         |
+| `CORPUS_TRUST_PROXY`    | `0`            | Trust `X-Forwarded-Proto`/`X-Forwarded-Host` from a reverse proxy       |
 | `CORPUS_MAX_BODY_BYTES` | `1048576`      | Request body limit                                                      |
 | `CORPUS_REPLAY`         | `stub`         | `stub` or `sandbox` replay executor                                     |
 | `CORPUS_SANDBOX_CMD`    | —              | Sandbox command; required for `sandbox` mode                            |
@@ -138,10 +139,18 @@ Key endpoints:
 `CORPUS_REPLAY=sandbox` also requires `data/registry.json`, a JSON array of
 environment specs keyed by `environment_hash`.
 
+Link derivation precedence: `CORPUS_BASE_URL`, then forwarded headers (only when
+`CORPUS_TRUST_PROXY=1`), then the request origin. Run the API behind Cloudflare
+Tunnel with `CORPUS_TRUST_PROXY=1` so links use `https`.
+
 ## Security
 
 The API has no authentication. It is intended to run on localhost or a trusted
 network only. Revisit access control before exposing it beyond that boundary.
+
+`CORPUS_TRUST_PROXY` trusts the forwarded headers of any client. Enable it only
+when the server sits behind a proxy you control. It affects generated links
+only; it grants no data access.
 
 ## Tests
 

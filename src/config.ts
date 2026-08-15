@@ -13,6 +13,7 @@ export interface Config {
   host: string;
   port: number;
   baseUrl: string | undefined;
+  trustProxy: boolean;
   versionsPath: string | undefined;
   replay: "stub" | "sandbox";
   sandboxCmd: string | undefined;
@@ -37,6 +38,21 @@ function parseOrigins(raw: string | undefined): string[] {
   return raw.split(",").map((origin) => origin.trim()).filter(Boolean);
 }
 
+function parseTrustProxy(raw: string | undefined): boolean {
+  if (raw === undefined || raw === "") {
+    return false;
+  }
+  if (raw === "1" || raw === "true") {
+    return true;
+  }
+  if (raw === "0" || raw === "false") {
+    return false;
+  }
+  throw new ConfigError(
+    `invalid CORPUS_TRUST_PROXY=${raw} (use 1, 0, true, or false)`,
+  );
+}
+
 export function loadConfig(
   env: Record<string, string | undefined> = Deno.env.toObject(),
 ): Config {
@@ -55,6 +71,7 @@ export function loadConfig(
     host: env.CORPUS_HOST ?? "0.0.0.0",
     port: parsePort(env.PORT),
     baseUrl: env.CORPUS_BASE_URL,
+    trustProxy: parseTrustProxy(env.CORPUS_TRUST_PROXY),
     versionsPath: env.CORPUS_VERSIONS,
     replay,
     sandboxCmd: env.CORPUS_SANDBOX_CMD,

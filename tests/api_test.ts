@@ -628,6 +628,107 @@ Deno.test("baseUrl option overrides self links", async () => {
   await Deno.remove(dir, { recursive: true });
 });
 
+Deno.test("trusted proxy headers set the base URL everywhere", async () => {
+  const dir = tempDir();
+  const index = new SqliteNodeStore(`${dir}/index.db`);
+  await index.init();
+  const ingest = new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    index,
+  );
+  const key = generateKeyPair();
+  const recipe = signed(recipeNode(key.publicKeyHex), key.secretKeyHex);
+  await ingest.ingestNode(recipe);
+  const handler = createApp(ingest, index, {
+    trustProxy: true,
+    logger: () => {},
+  });
+  const forwarded = {
+    headers: {
+      "x-forwarded-proto": "https",
+      "x-forwarded-host": "corpus.example",
+    },
+  };
+  try {
+    const root = await (await req(handler, "/", forwarded)).json();
+    assertEquals(root.links.self, "https://corpus.example");
+    assertEquals(root.links.openapi, "https://corpus.example/openapi.json");
+    assertEquals(root.meta.docs.llms, "https://corpus.example/llms.txt");
+
+    const doc = await (await req(handler, "/openapi.json", forwarded)).json();
+    assertEquals(doc.servers, [{ url: "https://corpus.example" }]);
+
+    const llms = await (await req(handler, "/llms.txt", forwarded)).text();
+    assertEquals(llms.includes("https://corpus.example/openapi.json"), true);
+
+    const nodes = await (await req(handler, "/nodes", forwarded)).json();
+    assertEquals(nodes.links.self, "https://corpus.example");
+    assertEquals(
+      nodes.links.first.startsWith("https://corpus.example/nodes"),
+      true,
+    );
+    assertEquals(
+      nodes.data[0].links.self,
+      `https://corpus.example/nodes/${nodes.data[0].id}`,
+    );
+  } finally {
+    await index.close();
+  }
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("forwarded headers are ignored by default", async () => {
+  const dir = tempDir();
+  const index = new SqliteNodeStore(`${dir}/index.db`);
+  await index.init();
+  const ingest = new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    index,
+  );
+  const handler = createApp(ingest, index, { logger: () => {} });
+  const forwarded = {
+    headers: {
+      "x-forwarded-proto": "https",
+      "x-forwarded-host": "corpus.example",
+    },
+  };
+  try {
+    const root = await (await req(handler, "/", forwarded)).json();
+    assertEquals(root.links.self, "http://127.0.0.1");
+    assertEquals(root.links.openapi, "http://127.0.0.1/openapi.json");
+  } finally {
+    await index.close();
+  }
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("baseUrl option wins over forwarded headers", async () => {
+  const dir = tempDir();
+  const index = new SqliteNodeStore(`${dir}/index.db`);
+  await index.init();
+  const ingest = new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    index,
+  );
+  const handler = createApp(ingest, index, {
+    baseUrl: "https://corpus.example",
+    trustProxy: true,
+    logger: () => {},
+  });
+  try {
+    const root = await (await req(handler, "/", {
+      headers: {
+        "x-forwarded-proto": "http",
+        "x-forwarded-host": "evil.example",
+      },
+    })).json();
+    assertEquals(root.links.self, "https://corpus.example");
+  } finally {
+    await index.close();
+  }
+  await Deno.remove(dir, { recursive: true });
+});
+
 Deno.test("POST /nodes rejects a non-CID link with 422", async () => {
   const { handler, authorKey, dir } = await makeServer();
   const node = signed(

@@ -75,6 +75,7 @@ function entryPoint(baseUrl: string): Record<string, unknown> {
 export interface CreateAppOptions {
   bodyLimit?: number;
   baseUrl?: string | null;
+  trustProxy?: boolean;
   corsOrigins?: string[];
   webDir?: string;
   logger?: (line: string) => void;
@@ -106,6 +107,20 @@ function mimeFor(path: string): string {
   }
 }
 
+function originFor(request: Request, trustProxy: boolean): string {
+  const url = new URL(request.url);
+  if (!trustProxy) {
+    return url.origin;
+  }
+  const proto = (request.headers.get("x-forwarded-proto") ?? url.protocol)
+    .replace(/:$/, "");
+  const host = (request.headers.get("x-forwarded-host") ?? url.host).split(
+    ",",
+  )[0]!
+    .trim();
+  return `${proto}://${host}`;
+}
+
 export function createApp(
   ingest: IngestService,
   store: NodeStore,
@@ -114,6 +129,7 @@ export function createApp(
   const bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT;
   const logger = options.logger ?? ((line: string) => console.log(line));
   const baseUrlOption = options.baseUrl ?? null;
+  const trustProxy = options.trustProxy ?? false;
   const corsOrigins = options.corsOrigins ?? [];
   const allowAllOrigins = corsOrigins.includes("*");
   const webDir =
@@ -225,7 +241,10 @@ export function createApp(
     method: string,
     requestId: string,
   ): Promise<Response> {
-    const baseUrl = (baseUrlOption ?? url.origin).replace(/\/+$/, "");
+    const baseUrl = (baseUrlOption ?? originFor(request, trustProxy)).replace(
+      /\/+$/,
+      "",
+    );
     const segments = url.pathname.split("/").filter(Boolean);
 
     try {
@@ -666,7 +685,9 @@ export function createApp(
     };
     const lastOffset = Math.max(0, Math.ceil(result.total / limit) - 1) * limit;
     const setParams = (o: number) => {
-      const p = new URL(request.url);
+      const requestUrl = new URL(request.url);
+      const p = new URL(requestUrl.pathname, baseUrl);
+      p.search = requestUrl.search;
       p.searchParams.set("page[offset]", String(o));
       return p.toString();
     };
@@ -786,6 +807,7 @@ export interface StartServerOptions {
   hostname?: string;
   bodyLimit?: number;
   baseUrl?: string | null;
+  trustProxy?: boolean;
   corsOrigins?: string[];
 }
 
@@ -797,6 +819,7 @@ export function startServer(
   const handler = createApp(ingest, store, {
     bodyLimit: options.bodyLimit,
     baseUrl: options.baseUrl,
+    trustProxy: options.trustProxy,
     corsOrigins: options.corsOrigins,
   });
   let resolveAddr: (info: { hostname: string; port: number }) => void =

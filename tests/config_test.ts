@@ -6,6 +6,7 @@ const BASE_ENV: Record<string, string> = {
   PORT: "8123",
   CORPUS_HOST: "127.0.0.1",
   CORPUS_BASE_URL: "https://corpus.example",
+  CORPUS_TRUST_PROXY: "1",
   CORPUS_VERSIONS: "/tmp/pins.json",
   CORPUS_REPLAY: "sandbox",
   CORPUS_SANDBOX_CMD: "/bin/true --flag",
@@ -28,6 +29,7 @@ Deno.test("loadConfig reads every variable", () => {
   assertEquals(c.host, "127.0.0.1");
   assertEquals(c.port, 8123);
   assertEquals(c.baseUrl, "https://corpus.example");
+  assertEquals(c.trustProxy, true);
   assertEquals(c.versionsPath, "/tmp/pins.json");
   assertEquals(c.replay, "sandbox");
   assertEquals(c.sandboxCmd, "/bin/true --flag");
@@ -42,6 +44,7 @@ Deno.test("loadConfig applies defaults", () => {
   assertEquals(c.host, "0.0.0.0");
   assertEquals(c.port, 8000);
   assertEquals(c.baseUrl, undefined);
+  assertEquals(c.trustProxy, false);
   assertEquals(c.versionsPath, undefined);
   assertEquals(c.replay, "stub");
   assertEquals(c.sandboxCmd, undefined);
@@ -75,6 +78,21 @@ Deno.test("loadConfig rejects an unknown replay mode", () => {
 Deno.test("loadConfig falls back to the default body limit on garbage input", () => {
   const c = loadConfig(env({ CORPUS_MAX_BODY_BYTES: "nope" }));
   assertEquals(c.maxBodyBytes, 1_048_576);
+});
+
+Deno.test("loadConfig parses trust proxy off values", () => {
+  assertEquals(loadConfig(env({ CORPUS_TRUST_PROXY: "0" })).trustProxy, false);
+  assertEquals(
+    loadConfig(env({ CORPUS_TRUST_PROXY: "false" })).trustProxy,
+    false,
+  );
+});
+
+Deno.test("loadConfig rejects an invalid trust proxy value", () => {
+  assertThrows(
+    () => loadConfig(env({ CORPUS_TRUST_PROXY: "maybe" })),
+    ConfigError,
+  );
 });
 
 Deno.test("ConfigError has the expected name", () => {
