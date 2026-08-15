@@ -15,6 +15,8 @@ export const verificationModule: NodeTypeModule = {
   nodeType: "Verification",
   plural: "verifications",
   schemaFile: "verification.json",
+  description:
+    "Attestation that a recipe was tested in a specific environment.",
   title() {
     return null;
   },

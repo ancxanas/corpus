@@ -99,8 +99,11 @@ navigation in the sidebar. Open `http://localhost:8000/ui/` to browse it.
 ## HTTP API
 
 A machine-readable OpenAPI 3.1 document is served at `GET /openapi.json`. The
-JSON:API entrypoint at `GET /` links to it. All responses use the
-`application/vnd.api+json` media type unless noted.
+JSON:API entrypoint at `GET /` links to it and carries a `meta` block that
+self-describes the corpus for agents: node types, supported filters, the signing
+rule, and the trust model. A plain-text brief for LLM crawlers is served at
+`GET /llms.txt`. All responses use the `application/vnd.api+json` media type
+unless noted.
 
 Key endpoints:
 

@@ -10,6 +10,7 @@ export const recipeModule: NodeTypeModule = {
   nodeType: "Recipe",
   plural: "recipes",
   schemaFile: "recipe.json",
+  description: "A verified fix with code, steps, and caveats.",
   template(publicKey) {
     return {
       osk: {

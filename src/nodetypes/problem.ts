@@ -10,6 +10,8 @@ export const problemModule: NodeTypeModule = {
   nodeType: "Problem",
   plural: "problems",
   schemaFile: "problem.json",
+  description:
+    "A diagnosed failure: symptoms, root cause, and reproduction. Links to solution recipes.",
   template(publicKey) {
     return {
       osk: {

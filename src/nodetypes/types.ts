@@ -26,6 +26,7 @@ export interface NodeTypeModule {
   nodeType: NodeType;
   plural: string;
   schemaFile: string;
+  description: string;
   template?: (publicKey: string) => Record<string, unknown>;
   title(node: Node): string | null;
   meta(node: Node): NodeMeta;

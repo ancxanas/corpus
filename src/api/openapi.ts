@@ -1,5 +1,10 @@
 import { registry } from "../nodetypes/registry.ts";
 import { loadSchema } from "../schema/index.ts";
+import {
+  QUERY_FILTERS,
+  QUERY_PAGE_LIMIT_MAX,
+  QUERY_SORTABLE,
+} from "./selfdescription.ts";
 
 export const OPENAPI_MEDIA_TYPE = "application/vnd.oai.openapi+json";
 
@@ -11,7 +16,22 @@ type Json = Record<string, unknown>;
 
 const EFFECTIVE_STATUS = ["draft", "active", "stale", "disputed", "deprecated"];
 const SEVERITY = ["critical", "high", "medium", "low"];
-const SORT_FIELDS = ["created_at", "last_verified", "confidence_score"];
+
+const FILTER_SCHEMAS: Record<string, Json> = {
+  node_type: {
+    type: "string",
+    enum: ["problems", "recipes", "guides", "verifications"],
+  },
+  effective_status: { enum: EFFECTIVE_STATUS },
+  severity: { enum: SEVERITY },
+  title: {
+    type: "string",
+    description: "Case-insensitive substring match on the node title.",
+  },
+  public_key: { $ref: "#/components/schemas/ed25519PublicKey" },
+  node_id: { $ref: "#/components/schemas/uuidv7" },
+  framework_name: { type: "string" },
+};
 
 function rewriteRefs(value: unknown): unknown {
   if (typeof value === "string") {
@@ -365,43 +385,28 @@ const DOCUMENTED_RESPONSES: Json = {
 };
 
 function queryParameters(): Json[] {
-  const filter = (name: string, schema: Json): Json => ({
-    name,
+  const params: Json[] = QUERY_FILTERS.map((name) => ({
+    name: `filter[${name}]`,
     in: "query",
     required: false,
-    description: `Filter by ${name.slice(8, -1)}.`,
-    schema,
-  });
-  return [
-    filter("filter[node_type]", {
-      type: "string",
-      enum: ["problems", "recipes", "guides", "verifications"],
-    }),
-    filter("filter[effective_status]", { enum: EFFECTIVE_STATUS }),
-    filter("filter[severity]", { enum: SEVERITY }),
-    filter("filter[title]", {
-      type: "string",
-      description: "Case-insensitive substring match on the node title.",
-    }),
-    filter("filter[public_key]", {
-      $ref: "#/components/schemas/ed25519PublicKey",
-    }),
-    filter("filter[node_id]", { $ref: "#/components/schemas/uuidv7" }),
-    filter("filter[framework_name]", { type: "string" }),
+    description: `Filter by ${name}.`,
+    schema: FILTER_SCHEMAS[name]!,
+  }));
+  params.push(
     {
       name: "sort",
       in: "query",
       required: false,
       description:
         "Sort field. Prefix with a minus sign for descending order. Sorted descending in all cases.",
-      schema: { enum: SORT_FIELDS },
+      schema: { enum: QUERY_SORTABLE },
     },
     {
       name: "page[limit]",
       in: "query",
       required: false,
       description: "Maximum number of resources to return. Defaults to 25.",
-      schema: { type: "integer", minimum: 1, maximum: 100 },
+      schema: { type: "integer", minimum: 1, maximum: QUERY_PAGE_LIMIT_MAX },
     },
     {
       name: "page[offset]",
@@ -410,7 +415,8 @@ function queryParameters(): Json[] {
       description: "Number of resources to skip. Defaults to 0.",
       schema: { type: "integer", minimum: 0 },
     },
-  ];
+  );
+  return params;
 }
 
 function searchOperation(): Json {

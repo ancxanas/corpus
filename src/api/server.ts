@@ -39,6 +39,7 @@ import {
   unsupportedNodeTypeError,
 } from "./http.ts";
 import { buildOpenApiDocument, OPENAPI_MEDIA_TYPE } from "./openapi.ts";
+import { buildLlmsText, buildSelfDescription } from "./selfdescription.ts";
 
 const SPEC_COLLECTIONS = [
   "problems",
@@ -60,6 +61,7 @@ function entryPoint(baseUrl: string): Record<string, unknown> {
   }
   return document(null, {
     baseUrl,
+    meta: buildSelfDescription(baseUrl),
     links: {
       self: baseUrl,
       ...collectionLinks,
@@ -239,6 +241,14 @@ export function createApp(
         const doc = await buildOpenApiDocument(baseUrl);
         return new Response(JSON.stringify(doc, null, 2), {
           headers: { "Content-Type": `${OPENAPI_MEDIA_TYPE}; charset=utf-8` },
+        });
+      }
+
+      if (
+        segments.length === 1 && segments[0] === "llms.txt" && method === "GET"
+      ) {
+        return new Response(buildLlmsText(baseUrl), {
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
         });
       }
 
