@@ -207,6 +207,7 @@ const ENVELOPE_SCHEMAS: Json = {
         oneOf: [
           { $ref: "#/components/schemas/Resource" },
           { type: "array", items: { $ref: "#/components/schemas/Resource" } },
+          { $ref: "#/components/schemas/ReceiptResource" },
           {
             type: "array",
             items: { $ref: "#/components/schemas/ReceiptResource" },
@@ -439,6 +440,33 @@ function searchOperation(): Json {
   };
 }
 
+function receiptParameters(): Json[] {
+  return [
+    {
+      name: "sort",
+      in: "query",
+      required: false,
+      description:
+        "Sort by receipt timestamp. Prefix with a minus sign for descending.",
+      schema: { enum: ["timestamp", "-timestamp"] },
+    },
+    {
+      name: "page[limit]",
+      in: "query",
+      required: false,
+      description: "Maximum number of receipts to return. Defaults to 25.",
+      schema: { type: "integer", minimum: 1, maximum: QUERY_PAGE_LIMIT_MAX },
+    },
+    {
+      name: "page[offset]",
+      in: "query",
+      required: false,
+      description: "Number of receipts to skip. Defaults to 0.",
+      schema: { type: "integer", minimum: 0 },
+    },
+  ];
+}
+
 function buildPaths(): Json {
   const cidParam: Json = {
     name: "cid",
@@ -579,6 +607,15 @@ function buildPaths(): Json {
       },
     },
     "/verifications": {
+      get: {
+        tags: ["verifications"],
+        summary: "List the verification receipts, newest first.",
+        parameters: receiptParameters(),
+        responses: {
+          "200": DOCUMENTED_RESPONSES["200"],
+          "406": ERROR_RESPONSES["406"],
+        },
+      },
       post: {
         tags: ["verifications"],
         summary: "Submit a signed Verification receipt.",
@@ -600,6 +637,18 @@ function buildPaths(): Json {
         },
       },
     },
+    "/verifications/{cid}": {
+      parameters: [cidParam],
+      get: {
+        tags: ["verifications"],
+        summary: "Get a single verification receipt by its receipt CID.",
+        responses: {
+          "200": DOCUMENTED_RESPONSES["200"],
+          "404": ERROR_RESPONSES["404"],
+          "406": ERROR_RESPONSES["406"],
+        },
+      },
+    },
     "/schemas/{node_type}": {
       parameters: [nodeTypeParam],
       get: {
@@ -614,7 +663,7 @@ function buildPaths(): Json {
     },
   };
 
-  for (const collection of ["problems", "recipes", "guides", "verifications"]) {
+  for (const collection of ["problems", "recipes", "guides"]) {
     paths[`/${collection}`] = {
       get: {
         tags: ["search"],

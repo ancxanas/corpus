@@ -203,7 +203,10 @@ Deno.test("POST /verifications returns a resource document", async () => {
   assert(body.data, "data must not be null");
   assertEquals(body.data.type, "verifications");
   assertEquals(body.data.id, body.meta.cid);
-  assertEquals(body.data.links.self, `http://127.0.0.1/nodes/${body.meta.cid}`);
+  assertEquals(
+    body.data.links.self,
+    `http://127.0.0.1/verifications/${body.meta.cid}`,
+  );
   assertEquals(
     body.data.attributes.target.solution_id["/"],
     recipeCid,
@@ -324,6 +327,88 @@ Deno.test("GET /nodes/{cid}/verifications is read-only", async () => {
   const res = await req(handler, `/nodes/${recipeCid}/verifications`, {
     method: "DELETE",
   });
+  assertEquals(res.status, 405);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /verifications lists receipts newest first", async () => {
+  const { handler, verifierKey, problemCid, recipeCid, dir } =
+    await makeServer();
+  const newer = signed(
+    verificationNode(
+      verifierKey.publicKeyHex,
+      problemCid,
+      recipeCid,
+      "e".repeat(64),
+      { timestamp: "2026-08-15T00:00:00Z" },
+    ),
+    verifierKey.secretKeyHex,
+  );
+  const created = await req(
+    handler,
+    "/verifications",
+    postNode("verifications", newer),
+  );
+  const newerCid = (await created.json()).meta.cid;
+
+  const res = await req(handler, "/verifications");
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  assertEquals(body.meta.total, 2);
+  assertEquals(body.data.length, 2);
+  assertEquals(body.data[0].id, newerCid);
+  assertEquals(body.data[0].attributes.timestamp, "2026-08-15T00:00:00Z");
+
+  const paged = await req(handler, "/verifications?page[limit]=1");
+  const pagedBody = await paged.json();
+  assertEquals(pagedBody.meta.total, 2);
+  assertEquals(pagedBody.data.length, 1);
+  assertEquals(pagedBody.data[0].id, newerCid);
+  assertEquals(typeof pagedBody.links.next, "string");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /verifications/{cid} returns a single receipt", async () => {
+  const { handler, verifierKey, problemCid, recipeCid, dir } =
+    await makeServer();
+  const newer = signed(
+    verificationNode(
+      verifierKey.publicKeyHex,
+      problemCid,
+      recipeCid,
+      "e".repeat(64),
+    ),
+    verifierKey.secretKeyHex,
+  );
+  const created = await req(
+    handler,
+    "/verifications",
+    postNode("verifications", newer),
+  );
+  const cid = (await created.json()).meta.cid;
+
+  const res = await req(handler, `/verifications/${cid}`);
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  assertEquals(body.data.type, "verifications");
+  assertEquals(body.data.id, cid);
+  assertEquals(body.data.links.self, `http://127.0.0.1/verifications/${cid}`);
+
+  const nodeRes = await req(handler, `/nodes/${cid}`);
+  assertEquals(nodeRes.status, 404);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /verifications/{cid} 404s for an unknown cid", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, `/verifications/${"b".repeat(61)}`);
+  assertEquals(res.status, 404);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /verifications is read-only", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, "/verifications", { method: "DELETE" });
   assertEquals(res.status, 405);
   await Deno.remove(dir, { recursive: true });
 });

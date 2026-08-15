@@ -130,7 +130,7 @@ function serializeReceipt(
   return {
     type: "verifications",
     id: receipt.receipt_cid,
-    links: { self: `${baseUrl}/nodes/${receipt.receipt_cid}` },
+    links: { self: `${baseUrl}/verifications/${receipt.receipt_cid}` },
     attributes: {
       target: {
         problem_id: { "/": receipt.problem_cid },
@@ -362,6 +362,20 @@ export function createApp(
 
       if (segments[0] === "verifications" && method === "POST") {
         return await createVerification(request, baseUrl);
+      }
+
+      if (
+        segments[0] === "verifications" && segments.length === 2 &&
+        method === "GET"
+      ) {
+        return await getVerification(segments[1]!, baseUrl);
+      }
+
+      if (segments[0] === "verifications" && segments.length === 1) {
+        if (method !== "GET") {
+          return methodNotAllowed("GET");
+        }
+        return await getVerificationsCollection(request, baseUrl);
       }
 
       if (segments.length === 1 && ADVERTISED_COLLECTIONS.has(segments[0]!)) {
@@ -637,6 +651,82 @@ export function createApp(
     const resources = receipts.map((r) => serializeReceipt(r, baseUrl));
     return jsonResponse(
       document(resources, { baseUrl, meta: { total: receipts.length } }),
+    );
+  }
+
+  async function getVerification(
+    cid: string,
+    baseUrl: string,
+  ): Promise<Response> {
+    const receipt = await store.getReceipt(cid);
+    if (!receipt) {
+      return jsonResponse(
+        errorDocument([{
+          status: "404",
+          title: "not found",
+          detail: `No receipt with CID ${cid}.`,
+        }]),
+        404,
+      );
+    }
+    return jsonResponse(
+      document(serializeReceipt(receipt, baseUrl), { baseUrl }),
+    );
+  }
+
+  function getVerificationsCollection(
+    request: Request,
+    baseUrl: string,
+  ): Response {
+    const params = new URL(request.url).searchParams;
+    const limit = Math.min(
+      Math.max(Number(params.get("page[limit]")) || 25, 1),
+      100,
+    );
+    const offset = Math.max(Number(params.get("page[offset]")) || 0, 0);
+    const ascending = !(params.get("sort") ?? "-timestamp").startsWith("-");
+    const all = store.getAllReceipts();
+    const sorted = [...all].sort(
+      (a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp),
+    );
+    if (!ascending) {
+      sorted.reverse();
+    }
+    const page = sorted.slice(offset, offset + limit);
+    const resources = page.map((r) => serializeReceipt(r, baseUrl));
+
+    const pageLinks: Record<string, string> = {
+      first: "",
+      last: "",
+      next: "",
+      prev: "",
+    };
+    const lastOffset = Math.max(0, Math.ceil(all.length / limit) - 1) * limit;
+    const setParams = (o: number) => {
+      const requestUrl = new URL(request.url);
+      const p = new URL(requestUrl.pathname, baseUrl);
+      p.search = requestUrl.search;
+      p.searchParams.set("page[offset]", String(o));
+      return p.toString();
+    };
+    pageLinks.first = setParams(0);
+    pageLinks.last = setParams(lastOffset);
+    pageLinks.next = offset + limit < all.length
+      ? setParams(offset + limit)
+      : "";
+    pageLinks.prev = offset > 0 ? setParams(Math.max(0, offset - limit)) : "";
+
+    return jsonResponse(
+      document(resources, {
+        baseUrl,
+        links: {
+          first: pageLinks.first,
+          last: pageLinks.last,
+          next: pageLinks.next || null,
+          prev: pageLinks.prev || null,
+        },
+        meta: { total: all.length },
+      }),
     );
   }
 
