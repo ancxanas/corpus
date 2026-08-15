@@ -265,6 +265,37 @@ Stack: Deno + TypeScript. MVP = Problem / Recipe / Verification triangle.
       template validation, API guides/schema/receipts/search, storage migration
       v1→v2 + title search
 
+## Phase 15 — Rich seed + Geist-inspired UI redesign
+
+- [x] Deterministic rich seed rewrite (`scripts/seed.ts`)
+  - [x] Wipes `corpus.db*` + `blocks/` under `--data-dir` at startup; keys are
+        retained so CIDs stay stable across re-seeds; one `deno task seed`
+        command (no reseed task)
+  - [x] Dataset: 9 problems, 8 recipes, 5 guides, 11 verification receipts (22
+        indexed nodes), spanning active/draft/disputed/stale/deprecated, with
+        two `supersedes_cid` version chains (leak v1→v2, retries v1→v2)
+  - [x] Confidence depth: memory-pool recipe reaches 0.875 via three independent
+        receipts (verifier, reviewer, peer keys); disputed and stale states
+        driven by failing/outdated receipts
+  - [x] `supersedes_cid` links to real ingested CIDs (computed from the ingest
+        result), no dangling relationship CIDs
+- [x] Web UI redesign (web/) — Vercel Geist-inspired dark design language
+  - [x] Token system: `#0a0a0a` canvas, `#111`/`#1a1a1a` surfaces, `#3291ff`
+        accent, 4px spacing grid, mono + tabular numerals for all data
+  - [x] Sticky topbar with brand, live search (`/` or `Cmd/Ctrl-K`), kbd hint
+  - [x] Segmented tabs with live counts, compact filters (status, severity,
+        sort), stat chips in the page header
+  - [x] Dense divided row list (icon + title + snippet + tags + status pill +
+        mono confidence/date) — vertical list over cards per scan research
+  - [x] Article detail layout: kicker, title, meta row, KB section order
+        (summary → prerequisites → steps → code → caveats), numbered steps, code
+        blocks with header + copy, warning callouts, ToC for guides, test-suite
+        tables, receipts panel for recipes
+  - [x] Sidebar: metadata with confidence bar, version-chain navigation, grouped
+        relationships, copy-CID
+  - [x] Skeleton loading, empty state with recovery, error state with retry,
+        reduced-motion support
+
 ---
 
 ## Post-MVP (tracked, not in scope)
@@ -293,3 +324,9 @@ Stack: Deno + TypeScript. MVP = Problem / Recipe / Verification triangle.
 - 2026-08-15: knowledge expansion. Added Guide node type, enriched
   Problem/Recipe payloads, title search (SCHEMA_V2), verification receipts
   endpoint, deeper demo seed data (13 nodes), and a GitHub-dark web UI.
+- 2026-08-15: seed + UI redesign. Replaced the demo seed with a rich,
+  deterministic 22-node dataset (9 problems, 8 recipes, 5 guides, 11 receipts,
+  two version chains, confidence depth via three keys) that wipes stale data on
+  re-seed; rewrote the web UI in a Geist-inspired dark design language (dense
+  row list, tabs with counts, keyboard search, article detail with receipts +
+  version chains + code copy).

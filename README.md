@@ -13,7 +13,7 @@ JSON:API server. The system follows the OSK Specification v0.3.0 in
 - JSON:API server with search, filtering, sorting, pagination, and compound
   documents.
 - Read-only web UI for browsing, searching, filtering, and inspecting nodes,
-  served from `/ui/`.
+  served from `/ui/`, in a Geist-inspired dark design language.
 - Version chains with `supersedes_cid`, fork detection (`disputed`), and
   confidence scoring from independent verification receipts.
 - Deprecation triggers evaluated against pinned versions.
@@ -74,20 +74,27 @@ deno task cli -- rebuild --data-dir data
 
 ## Demo data
 
-With the server running, seed a ready-made dataset: six detailed problems, four
-recipes, three guides, and five verification receipts spanning active, draft,
-disputed, stale, and deprecated states:
+Stop the server, then seed a rich, fully interlinked dataset for demoing and
+developing the UI. The seed **wipes** the existing index and blocks under
+`--data-dir` first, then stores a deterministic dataset: nine problems, eight
+recipes, five guides, and eleven verification receipts spanning active, draft,
+disputed, stale, and deprecated states, with two version chains and three
+independent sources for one recipe's confidence score.
 
 ```sh
 deno task start        # in one terminal
-deno task seed         # in another
+deno task seed         # in another (after the server has started)
 ```
 
-Open `http://localhost:8000/ui/` to browse it. The UI supports title search,
-per-type tabs, and per-recipe verification receipts. The seed writes three demo
-keys to `data/demo-key.json`, `data/verifier-key.json`, and
-`data/reviewer-key.json`, which the CLI can reuse. It is idempotent: re-running
-it skips nodes it already stored.
+`deno task seed` defaults to `data/` and needs no extra flags. It writes four
+demo keys to `data/` — `demo-key.json`, `verifier-key.json`,
+`reviewer-key.json`, and `peer-key.json` — which the CLI can reuse. Keys survive
+re-seeding, so stored CIDs stay deterministic.
+
+The UI is a Geist-inspired dark theme with a dense, scannable row list, per-type
+tabs with counts, live title search (`/` or `Cmd/Ctrl-K` to focus), article
+layout for detail pages, per-recipe verification receipts, and version-chain
+navigation in the sidebar. Open `http://localhost:8000/ui/` to browse it.
 
 ## Configuration
 

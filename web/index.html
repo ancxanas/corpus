@@ -4,21 +4,34 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
+    <meta name="description"
+      content="The Corpus — signed, verified engineering knowledge" />
     <title>The Corpus</title>
     <link rel="stylesheet" href="/ui/styles.css" />
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="#/">The <span class="mark">Corpus</span></a>
-      <span class="tagline">signed, verified knowledge</span>
-      <label class="search">
+      <a class="brand" href="#/">
+        <span class="logo">C</span>
+        <span>The Corpus</span>
+      </a>
+      <div class="search-wrap">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
         <input
           id="search"
           type="search"
-          placeholder="Search titles…"
+          placeholder="Search knowledge…"
           autocomplete="off"
+          spellcheck="false"
+          aria-label="Search knowledge"
         />
-      </label>
+        <span class="kbd" aria-hidden="true">/</span>
+      </div>
     </header>
     <main id="view" aria-live="polite"></main>
     <footer id="pagination" class="pagination" hidden></footer>

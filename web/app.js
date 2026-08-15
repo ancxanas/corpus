@@ -1,4 +1,5 @@
 const API_ACCEPT = { Accept: "application/vnd.api+json" };
+
 const COLLECTIONS = [
   { id: "all", label: "All" },
   { id: "problems", label: "Problems" },
@@ -10,12 +11,12 @@ const HERO = {
   all: {
     title: "A signed library of engineering knowledge",
     blurb:
-      "Problems, solutions, and verified guides — every claim linked to a cid-addressable record.",
+      "Problems, recipes, and guides — every claim linked to a cid-addressable, verifiable record.",
   },
   problems: {
     title: "Problems",
     blurb:
-      "Observed failures with reproduction steps, root causes, and linked solutions.",
+      "Observed failures with symptoms, reproduction steps, root causes, and linked solutions.",
   },
   recipes: {
     title: "Recipes",
@@ -25,18 +26,25 @@ const HERO = {
   guides: {
     title: "Guides",
     blurb:
-      "Curated walkthroughs that connect problems and solutions into coherent knowledge.",
+      "Curated walkthroughs that connect problems and recipes into coherent knowledge.",
   },
 };
 
 const STATUSES = ["", "active", "draft", "disputed", "stale", "deprecated"];
 const SEVERITIES = ["", "critical", "high", "medium", "low"];
 const SORTS = [
-  { id: "-created_at", label: "Newest first" },
-  { id: "created_at", label: "Oldest first" },
+  { id: "-created_at", label: "Newest" },
+  { id: "created_at", label: "Oldest" },
   { id: "-confidence_score", label: "Confidence" },
   { id: "-last_verified", label: "Last verified" },
 ];
+
+const TYPE_ICON = {
+  problems: "alert",
+  recipes: "beaker",
+  guides: "book",
+  verifications: "shield",
+};
 
 const state = {
   collection: "all",
@@ -49,12 +57,15 @@ const state = {
   next: null,
   prev: null,
   total: 0,
+  counts: { problems: 0, recipes: 0, guides: 0 },
 };
 
 const view = document.getElementById("view");
 const pagination = document.getElementById("pagination");
 const searchInput = document.getElementById("search");
 let searchTimer = null;
+
+/* ---------- helpers ---------- */
 
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) =>
@@ -72,36 +83,44 @@ function shortCid(cid) {
 }
 
 function fmtDate(iso) {
-  return iso ? new Date(iso).toLocaleString() : "—";
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
-const STATUS_CLASS = {
-  active: "ok",
-  draft: "warn",
-  disputed: "bad",
-  deprecated: "bad",
-  stale: "warn",
-};
-
-const SEVERITY_CLASS = {
-  critical: "bad",
-  high: "warn",
-  medium: "accent",
-  low: "muted",
-};
-
-function statusBadge(status) {
-  const cls = STATUS_CLASS[status] ?? "muted";
-  return `<span class="badge ${cls}">${esc(status)}</span>`;
-}
-
-function severityBadge(severity) {
-  const cls = SEVERITY_CLASS[severity] ?? "muted";
-  return `<span class="badge ${cls}">${esc(severity)}</span>`;
+function fmtDateTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function confidencePct(value) {
   return value == null ? "—" : `${Math.round(value * 100)}%`;
+}
+
+function confidenceClass(value) {
+  if (value == null) return "";
+  if (value >= 0.7) return "ok";
+  if (value >= 0.4) return "warn";
+  return "bad";
+}
+
+function typeOf(resource) {
+  return resource?.attributes?.osk?.node_type ?? resource?.type ?? "node";
+}
+
+function typeId(resource) {
+  return typeOf(resource).toLowerCase();
 }
 
 function titleOf(resource) {
@@ -111,64 +130,68 @@ function titleOf(resource) {
   if (payload.guide) return payload.guide.title;
   if (payload.verification) {
     return `Verification of ${
-      shortCid(payload.verification.target.solution_id["/"])
+      shortCid(payload.verification.target?.solution_id?.["/"])
     }`;
   }
   return resource?.id ?? "Untitled";
 }
 
-function typeLabel(resource) {
-  const nodeType = resource?.attributes?.osk?.node_type ?? resource?.type;
-  return nodeType ? nodeType.toLowerCase() : "node";
+function snippetOf(resource) {
+  const payload = resource?.attributes?.payload ?? {};
+  if (payload.problem) return payload.problem.summary ?? "";
+  if (payload.recipe) return payload.recipe.summary ?? "";
+  if (payload.guide) return payload.guide.summary ?? "";
+  return "";
 }
 
-function linkedCid(cid, label) {
+function tagsOf(resource) {
+  const payload = resource?.attributes?.payload ?? {};
+  return payload.problem?.tags ?? payload.recipe?.tags ?? payload.guide?.tags ??
+    [];
+}
+
+function nodeLink(cid, label) {
   return `<a href="#/nodes/${esc(cid)}">${esc(label ?? shortCid(cid))}</a>`;
 }
 
 function cidLinkOrText(cid) {
-  return cid ? linkedCid(cid) : "—";
+  return cid ? nodeLink(cid) : "—";
 }
 
-function renderTags(tags) {
-  if (!tags?.length) {
-    return "";
-  }
-  return `<div class="tag-list">${
-    tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")
-  }</div>`;
+/* ---------- icons ---------- */
+
+const ICONS = {
+  alert:
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  beaker:
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6L4.5 18a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9V3"/><path d="M7 15h10"/></svg>`,
+  book:
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
+  shield:
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>`,
+  back:
+    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>`,
+  copy:
+    `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+  external:
+    `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`,
+  warning:
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  empty:
+    `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+  error:
+    `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+  info:
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  clock:
+    `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/></svg>`,
+};
+
+function icon(name) {
+  return ICONS[name] ?? "";
 }
 
-function renderReferences(references) {
-  if (!references?.length) {
-    return "";
-  }
-  return `
-    <h3>References</h3>
-    <ul>
-      ${
-    references.map((r) =>
-      `<li><a href="${esc(r.url)}" target="_blank" rel="noreferrer">${
-        esc(r.title)
-      }</a></li>`
-    ).join("")
-  }
-    </ul>`;
-}
-
-function renderSteps(steps) {
-  if (!steps?.length) {
-    return "";
-  }
-  return `<div>${
-    steps.map((s, i) => `
-      <div class="step">
-        <div class="step-title">${i + 1}. ${esc(s.title)}</div>
-        <p>${esc(s.body)}</p>
-        ${s.code ? `<pre class="codeblock">${esc(s.code)}</pre>` : ""}
-      </div>`).join("")
-  }</div>`;
-}
+/* ---------- api ---------- */
 
 async function api(path) {
   const res = await fetch(path, { headers: API_ACCEPT });
@@ -206,153 +229,201 @@ async function fetchCounts() {
     api("/nodes?filter[node_type]=recipes&page[limit]=1"),
     api("/nodes?filter[node_type]=guides&page[limit]=1"),
   ]);
-  return {
+  state.counts = {
     problems: problems.meta?.total ?? 0,
     recipes: recipes.meta?.total ?? 0,
     guides: guides.meta?.total ?? 0,
   };
 }
 
-function heroBlock(counts) {
-  const hero = HERO[state.collection] ?? HERO.all;
-  let stats = "";
-  if (state.collection === "all") {
-    stats = `
-      <div class="stat"><div class="stat-value">${counts.problems}</div><div class="stat-label">Problems</div></div>
-      <div class="stat"><div class="stat-value">${counts.recipes}</div><div class="stat-label">Recipes</div></div>
-      <div class="stat"><div class="stat-value">${counts.guides}</div><div class="stat-label">Guides</div></div>`;
-  } else {
-    stats = `
-      <div class="stat"><div class="stat-value">${state.total}</div><div class="stat-label">${hero.title}</div></div>`;
-  }
-  return `
-    <section class="hero">
-      <h1>${esc(hero.title)}</h1>
-      <p>${esc(hero.blurb)}</p>
-      <div class="stats">${stats}</div>
-    </section>`;
+/* ---------- render helpers ---------- */
+
+function pill(status) {
+  const cls = STATUSES.includes(status) ? status : "neutral";
+  return `<span class="pill ${cls}"><span class="dot"></span>${
+    esc(status)
+  }</span>`;
 }
 
-async function renderBrowse() {
-  try {
-    const counts = await fetchCounts();
-    const body = await api(`/nodes?${queryString()}`);
-    state.next = body.links?.next ?? null;
-    state.prev = body.links?.prev ?? null;
-    state.total = body.meta?.total ?? 0;
+function renderTags(tags) {
+  if (!tags?.length) return "";
+  return `<div class="row-tags">${
+    tags.slice(0, 4).map((t) => `<span class="tag">${esc(t)}</span>`).join("")
+  }</div>`;
+}
 
-    const rows = (body.data ?? []).map((resource) => {
-      const meta = resource.meta ?? {};
-      const nodeType = typeLabel(resource);
-      return `
-        <div class="node-row">
-          <div class="row-main">
-            <div class="row-title">
-              <a href="#/nodes/${esc(resource.id)}">${
-        esc(titleOf(resource))
-      }</a>
-            </div>
-            <div class="row-sub">${esc(nodeType)} ·
-              <span class="cid">${esc(shortCid(resource.id))}</span></div>
-          </div>
-          <div class="row-meta">
-            ${statusBadge(meta.effective_status)}<br />
-            ${esc(confidencePct(meta.confidence_score))} ·
-            ${esc(fmtDate(meta.created_at))}
-          </div>
-        </div>`;
-    }).join("");
+function renderSteps(steps) {
+  if (!steps?.length) return "";
+  return `<div>${
+    steps.map((s, i) => `
+      <div class="step">
+        <span class="step-num">${i + 1}</span>
+        <div class="step-body">
+          <div class="step-title">${esc(s.title)}</div>
+          <p>${esc(s.body)}</p>
+          ${s.code ? renderCode(s.code, `step-${i + 1}`) : ""}
+        </div>
+      </div>`).join("")
+  }</div>`;
+}
 
-    const tool = `
-      <div class="toolbar">
-        <label>Status
-          <select id="status">${
-      STATUSES.map((s) =>
-        `<option value="${s}" ${s === state.status ? "selected" : ""}>${
-          s === "" ? "Any" : s
-        }</option>`
-      ).join("")
-    }</select>
-        </label>
-        <label>Severity
-          <select id="severity" ${
-      state.collection === "problems" ? "" : "disabled"
-    }>${
-      SEVERITIES.map((s) =>
-        `<option value="${s}" ${s === state.severity ? "selected" : ""}>${
-          s === "" ? "Any" : s
-        }</option>`
-      ).join("")
-    }</select>
-        </label>
-        <label>Sort
-          <select id="sort">${
-      SORTS.map((s) =>
-        `<option value="${s.id}" ${
-          s.id === state.sort ? "selected" : ""
-        }>${s.label}</option>`
-      ).join("")
-    }</select>
-        </label>
-      </div>`;
+function renderCode(code, id) {
+  const lang = code?.language ?? "text";
+  const framework = code?.framework;
+  return `
+    <div class="codeblock-wrap">
+      <div class="codeblock-head">
+        <span class="lang">${esc(framework ? `${framework} · ` : "")}${
+    esc(lang)
+  }</span>
+        <button class="copy-btn" data-copy="${esc(id)}">
+          ${icon("copy")} Copy
+        </button>
+      </div>
+      <pre class="codeblock" id="code-${esc(id)}">${esc(code?.body ?? "")}</pre>
+    </div>`;
+}
 
-    const tabs = `
-      <div class="tabs">${
-      COLLECTIONS.map((c) =>
-        `<button data-collection="${c.id}" class="${
-          c.id === state.collection ? "active" : ""
-        }">${c.label}</button>`
-      ).join("")
-    }</div>`;
-
-    view.innerHTML = `
-      ${heroBlock(counts)}
-      ${tabs}
-      ${tool}
-      <div class="node-list">${
-      rows || '<div class="empty">No nodes found.</div>'
-    }</div>`;
-
-    for (const btn of view.querySelectorAll("[data-collection]")) {
-      btn.addEventListener("click", () => {
-        state.collection = btn.dataset.collection;
-        state.offset = 0;
-        state.severity = "";
-        renderBrowse();
-      });
-    }
-    view.querySelector("#status")?.addEventListener("change", (e) => {
-      state.status = e.target.value;
-      state.offset = 0;
-      renderBrowse();
-    });
-    view.querySelector("#severity")?.addEventListener("change", (e) => {
-      state.severity = e.target.value;
-      state.offset = 0;
-      renderBrowse();
-    });
-    view.querySelector("#sort")?.addEventListener("change", (e) => {
-      state.sort = e.target.value;
-      state.offset = 0;
-      renderBrowse();
-    });
-
-    renderPagination();
-  } catch (err) {
-    view.innerHTML = `<div class="error-box">${esc(err.message)}</div>`;
-    pagination.hidden = true;
+function renderReferences(references) {
+  if (!references?.length) return "";
+  return `
+    <h2>References</h2>
+    <ul>
+      ${
+    references.map((r) =>
+      `<li><a href="${esc(r.url)}" target="_blank" rel="noreferrer">${
+        esc(r.title)
+      } ${icon("external")}</a></li>`
+    ).join("")
   }
+    </ul>`;
+}
+
+function renderCalloutList(items, type, heading) {
+  if (!items?.length) return "";
+  return `
+    <h2>${esc(heading)}</h2>
+    ${
+    items.map((c) => `
+      <div class="callout ${type}">
+        ${icon(type === "warning" ? "warning" : "info")}
+        <p><strong>${esc(c.condition)}</strong> — ${esc(c.warning)}</p>
+      </div>`).join("")
+  }`;
+}
+
+/* ---------- browse ---------- */
+
+function tabsHtml() {
+  const counts = state.counts;
+  const countFor = (id) =>
+    id === "all"
+      ? counts.problems + counts.recipes + counts.guides
+      : counts[id] ?? 0;
+  return `
+    <nav class="tabs" aria-label="Knowledge types">
+      ${
+    COLLECTIONS.map((c) => `
+        <button data-collection="${c.id}" class="${
+      c.id === state.collection ? "active" : ""
+    }">
+          ${esc(c.label)}
+          <span class="count">${countFor(c.id)}</span>
+        </button>`).join("")
+  }
+    </nav>`;
+}
+
+function toolbarHtml() {
+  return `
+    <div class="toolbar">
+      <select id="status" aria-label="Filter by status">
+        ${
+    STATUSES.map((s) =>
+      `<option value="${s}" ${s === state.status ? "selected" : ""}>${
+        s === "" ? "Any status" : s
+      }</option>`
+    ).join("")
+  }
+      </select>
+      <select id="severity" aria-label="Filter by severity" ${
+    state.collection === "problems" ? "" : "disabled"
+  }>
+        ${
+    SEVERITIES.map((s) =>
+      `<option value="${s}" ${s === state.severity ? "selected" : ""}>${
+        s === "" ? "Any severity" : s
+      }</option>`
+    ).join("")
+  }
+      </select>
+      <select id="sort" aria-label="Sort">
+        ${
+    SORTS.map((s) =>
+      `<option value="${s.id}" ${s.id === state.sort ? "selected" : ""}>${
+        esc(s.label)
+      }</option>`
+    ).join("")
+  }
+      </select>
+    </div>`;
+}
+
+function rowHtml(resource) {
+  const meta = resource.meta ?? {};
+  const t = typeId(resource);
+  return `
+    <article class="row">
+      <div class="row-icon type-${esc(t)}">${icon(TYPE_ICON[t] ?? "info")}</div>
+      <div class="row-body">
+        <div class="row-title"><a href="#/nodes/${esc(resource.id)}">${
+    esc(titleOf(resource))
+  }</a></div>
+        ${
+    snippetOf(resource)
+      ? `<div class="row-snippet">${esc(snippetOf(resource))}</div>`
+      : ""
+  }
+        ${renderTags(tagsOf(resource))}
+      </div>
+      <div class="row-side">
+        ${pill(meta.effective_status ?? "draft")}
+        <span class="confidence ${confidenceClass(meta.confidence_score)}">${
+    esc(confidencePct(meta.confidence_score))
+  }</span>
+        <span class="date">${esc(fmtDate(meta.created_at))}</span>
+      </div>
+    </article>`;
+}
+
+function skeletonRows() {
+  return Array.from({ length: 6 }, (_, i) => `
+    <div class="skeleton-row" aria-hidden="true">
+      <div class="skeleton" style="width:32px;height:32px;border-radius:6px"></div>
+      <div style="flex:1">
+        <div class="skeleton" style="width:${
+    Math.min(70, 55 + i * 4)
+  }%;height:14px"></div>
+        <div class="skeleton" style="width:45%;height:12px;margin-top:8px"></div>
+      </div>
+      <div class="skeleton" style="width:60px;height:18px;border-radius:999px"></div>
+    </div>`).join("");
 }
 
 function renderPagination() {
   pagination.hidden = false;
   const pageNum = Math.floor(state.offset / state.limit) + 1;
+  const pageCount = Math.max(1, Math.ceil(state.total / state.limit));
   pagination.innerHTML = `
-    <button id="prev" ${state.prev ? "" : "disabled"}>← Previous</button>
-    <span class="page-info">Page ${pageNum} · ${state.total} node${
+    <button class="btn" id="prev" ${
+    state.prev ? "" : "disabled"
+  }>← Previous</button>
+    <span class="page-info">Page <b>${pageNum}</b> of <b>${pageCount}</b> · ${state.total} node${
     state.total === 1 ? "" : "s"
   }</span>
-    <button id="next" ${state.next ? "" : "disabled"}>Next →</button>`;
+    <button class="btn" id="next" ${
+    state.next ? "" : "disabled"
+  }>Next →</button>`;
   pagination.querySelector("#prev")?.addEventListener("click", () => {
     state.offset -= state.limit;
     renderBrowse();
@@ -363,311 +434,623 @@ function renderPagination() {
   });
 }
 
-function renderReceipts(receipts) {
-  if (!receipts || receipts.length === 0) {
-    return "";
-  }
-  const items = receipts.map((r) => {
-    const suite = r.attributes?.test_suite ?? {};
-    const failed = suite.failed ?? 0;
-    return `
-      <div class="node-row" style="margin-bottom:var(--space-2)">
-        <div class="row-main">
-          <div class="row-title">
-            <a href="#/nodes/${esc(r.id)}">Receipt ${esc(shortCid(r.id))}</a>
-          </div>
-          <div class="row-sub">${esc(fmtDate(r.attributes?.timestamp))}</div>
-        </div>
-        <div class="row-meta">
-          <span class="badge ${failed > 0 ? "bad" : "ok"}">${
-      esc(suite.passed)
-    } passed · ${esc(failed)} failed</span>
-        </div>
-      </div>`;
-  }).join("");
-  return `<div class="panel"><h2>Verifications</h2>${items}</div>`;
+function hasActiveFilters() {
+  return Boolean(state.status || state.severity || state.search);
 }
+
+function emptyBox() {
+  const isSearch = Boolean(state.search);
+  return `
+    <div class="state-box">
+      ${icon("empty")}
+      <h3>${isSearch ? "No matches" : "Nothing here yet"}</h3>
+      <p>${
+    isSearch
+      ? `No knowledge matches “${esc(state.search)}”. Try a different search.`
+      : `No ${
+        state.collection === "all" ? "nodes" : state.collection
+      } match these filters.`
+  }</p>
+      ${
+    hasActiveFilters()
+      ? `<button class="btn" id="clear-filters">Clear filters</button>`
+      : ""
+  }
+    </div>`;
+}
+
+async function renderBrowse() {
+  pagination.hidden = true;
+  view.innerHTML = `
+    ${heroBlock()}
+    ${tabsHtml()}
+    ${toolbarHtml()}
+    <div class="node-list">${skeletonRows()}</div>`;
+  bindBrowseControls();
+
+  try {
+    await fetchCounts();
+    const body = await api(`/nodes?${queryString()}`);
+    state.next = body.links?.next ?? null;
+    state.prev = body.links?.prev ?? null;
+    state.total = body.meta?.total ?? 0;
+
+    const rows = (body.data ?? []).map(rowHtml).join("");
+    view.querySelector(".tabs").outerHTML = tabsHtml();
+    bindBrowseControls();
+    view.querySelector(".node-list").innerHTML = rows || emptyBox();
+    renderPagination();
+  } catch (err) {
+    view.querySelector(".node-list").innerHTML = `
+      <div class="state-box">
+        ${icon("error")}
+        <h3>Could not load</h3>
+        <p>${esc(err.message)}</p>
+        <button class="btn" id="retry">Retry</button>
+      </div>`;
+    view.querySelector("#retry")?.addEventListener("click", renderBrowse);
+  }
+}
+
+function bindBrowseControls() {
+  for (const btn of view.querySelectorAll("[data-collection]")) {
+    btn.addEventListener("click", () => {
+      state.collection = btn.dataset.collection;
+      state.offset = 0;
+      state.severity = "";
+      renderBrowse();
+    });
+  }
+  view.querySelector("#status")?.addEventListener("change", (e) => {
+    state.status = e.target.value;
+    state.offset = 0;
+    renderBrowse();
+  });
+  view.querySelector("#severity")?.addEventListener("change", (e) => {
+    state.severity = e.target.value;
+    state.offset = 0;
+    renderBrowse();
+  });
+  view.querySelector("#sort")?.addEventListener("change", (e) => {
+    state.sort = e.target.value;
+    state.offset = 0;
+    renderBrowse();
+  });
+  view.querySelector("#clear-filters")?.addEventListener("click", () => {
+    state.status = "";
+    state.severity = "";
+    state.search = "";
+    searchInput.value = "";
+    renderBrowse();
+  });
+}
+
+function heroBlock() {
+  const hero = HERO[state.collection] ?? HERO.all;
+  const chips = COLLECTIONS.filter((c) => c.id !== "all").map((c) => `
+    <div class="stat-chip">
+      <span class="value">${state.counts[c.id] ?? 0}</span>
+      <span class="label">${esc(c.label)}</span>
+    </div>`).join("");
+  return `
+    <section class="page-head">
+      <div>
+        <h1>${esc(hero.title)}</h1>
+        <p class="blurb">${esc(hero.blurb)}</p>
+      </div>
+      <div class="stat-chips">${chips}</div>
+    </section>`;
+}
+
+/* ---------- detail ---------- */
 
 async function fetchReceipts(cid) {
   try {
     const body = await api(`/nodes/${encodeURIComponent(cid)}/verifications`);
     return body.data ?? [];
   } catch {
-    return null;
+    return [];
   }
 }
 
+async function fetchVersions(nodeId) {
+  if (!nodeId) return [];
+  try {
+    const body = await api(
+      `/nodes/by-node-id/${encodeURIComponent(nodeId)}/versions`,
+    );
+    return body.data ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function metadataPanel(resource, lifecycle, attribution, versions, currentCid) {
+  const meta = resource.meta ?? {};
+  const osk = resource.attributes?.osk ?? {};
+  const confidence = meta.confidence_score;
+  const sup = osk.supersedes_cid?.["/"];
+
+  const versionLinks = versions.length
+    ? `<div class="versions">${
+      versions.map((v, i) => `
+        <div class="version-item ${v.id === currentCid ? "current" : ""}">
+          <span class="vnum">v${i + 1}</span>
+          ${
+        v.id === currentCid
+          ? `<span>${esc(titleOf(v))} · current</span>`
+          : nodeLink(v.id, `${esc(titleOf(v))}`)
+      }
+        </div>`).join("")
+    }</div>`
+    : `<p style="color:var(--text-muted);font-size:13px;margin:0">Single version.</p>`;
+
+  return `
+    <div class="side-panel">
+      <h3>Metadata</h3>
+      <div class="meta-row"><span class="k">Status</span><span class="v">${
+    pill(meta.effective_status ?? "draft")
+  }</span></div>
+      <div class="meta-row"><span class="k">Confidence</span><span class="v">${
+    esc(confidencePct(confidence))
+  }</span></div>
+      <div class="confbar"><i class="${
+    confidenceClass(confidence)
+  }" style="width:${Math.round((confidence ?? 0) * 100)}%"></i></div>
+      <div class="meta-row" style="margin-top:8px"><span class="k">Version</span><span class="v">${
+    esc(meta.version ?? "—")
+  }</span></div>
+      <div class="meta-row"><span class="k">Created</span><span class="v">${
+    esc(fmtDateTime(meta.created_at))
+  }</span></div>
+      <div class="meta-row"><span class="k">Last verified</span><span class="v">${
+    esc(fmtDateTime(lifecycle.last_verified))
+  }</span></div>
+      <div class="meta-row"><span class="k">Author</span><span class="v">${
+    esc(shortCid(attribution.public_key))
+  }</span></div>
+      ${
+    sup
+      ? `<div class="meta-row"><span class="k">Supersedes</span><span class="v">${
+        cidLinkOrText(sup)
+      }</span></div>`
+      : ""
+  }
+      <div class="meta-row"><span class="k">CID</span><span class="v mono">${
+    esc(shortCid(resource.id))
+  }…</span></div>
+    </div>
+    <div class="side-panel">
+      <h3>Versions</h3>
+      ${versionLinks}
+    </div>`;
+}
+
+function relationshipsPanel(resource) {
+  const relationships = resource.relationships ?? {};
+  const groups = Object.entries(relationships).filter(([, rel]) =>
+    (rel.data ?? []).length > 0
+  );
+  if (groups.length === 0) return "";
+  return `
+    <div class="side-panel">
+      <h3>Relationships</h3>
+      ${
+    groups.map(([name, rel]) => `
+        <div class="rel-group">
+          <div class="rel-name">${esc(name)}</div>
+          <ul>
+            ${
+      (rel.data ?? []).map((r) => `
+              <li>${
+        nodeLink(r.id, `${esc(r.type)} ${esc(shortCid(r.id))}`)
+      }</li>`).join("")
+    }
+          </ul>
+        </div>`).join("")
+  }
+    </div>`;
+}
+
+function copyPanel(resource) {
+  return `
+    <div class="side-panel">
+      <h3>Identifier</h3>
+      <div class="mono" style="font-size:12px;word-break:break-all;color:var(--text-secondary)">${
+    esc(resource.id)
+  }</div>
+      <div style="margin-top:10px">
+        <button class="btn" data-copy-cid="${
+    esc(resource.id)
+  }" style="width:100%;justify-content:center">
+          ${icon("copy")} Copy CID
+        </button>
+      </div>
+    </div>`;
+}
+
+function renderReceiptsPanel(receipts) {
+  if (!receipts.length) return "";
+  const items = receipts.map((r) => {
+    const suite = r.attributes?.test_suite ?? {};
+    const failed = suite.failed ?? 0;
+    const total = suite.total ?? 0;
+    const pct = total > 0 ? Math.round(((suite.passed ?? 0) / total) * 100) : 0;
+    return `
+      <div class="receipt">
+        <div class="receipt-main">
+          <div class="receipt-title">${
+      nodeLink(r.id, `Receipt ${shortCid(r.id)}`)
+    }</div>
+          <div class="receipt-sub">${
+      esc(fmtDateTime(r.attributes?.timestamp))
+    }</div>
+        </div>
+        <div class="receipt-score">
+          <div class="pct ${failed > 0 ? "bad" : "ok"}">${esc(pct)}%</div>
+          <div class="mono" style="font-size:11px;color:var(--text-muted)">${
+      esc(suite.passed)
+    }/${esc(total)}</div>
+        </div>
+      </div>`;
+  }).join("");
+  return `
+    <section class="article">
+      <div class="article-head">
+        <div class="kicker">${icon("shield")} Verification receipts</div>
+        <h1 style="font-size:18px">Evidence</h1>
+        <p class="lead">${receipts.length} verification${
+    receipts.length === 1 ? "" : "s"
+  } recorded against this recipe.</p>
+      </div>
+      ${items}
+    </section>`;
+}
+
 async function renderDetail(cid) {
+  pagination.hidden = true;
+  view.innerHTML = `
+    <a class="back" href="#/">${icon("back")} Browse</a>
+    <div class="state-box"><div class="skeleton" style="width:70%;height:16px"></div></div>`;
+
   try {
     const body = await api(
       `/nodes/${encodeURIComponent(cid)}?include=relationships`,
     );
     const resource = body.data;
-    const meta = resource.meta ?? {};
     const osk = resource.attributes?.osk ?? {};
     const lifecycle = osk.knowledge_lifecycle ?? {};
     const attribution = osk.attribution ?? {};
-    const relationships = resource.relationships ?? {};
-    const nodeType = resource.attributes?.osk?.node_type;
+    const payload = resource.attributes?.payload ?? {};
+    const meta = resource.meta ?? {};
+    const t = typeId(resource);
 
-    const typeSection = renderPayload(resource);
+    const [receipts, versions] = await Promise.all([
+      payload.recipe ? fetchReceipts(resource.id) : Promise.resolve([]),
+      fetchVersions(osk.node_id),
+    ]);
 
-    const metaRows = `
-      <dt>CID</dt><dd class="cid">${esc(resource.id)}</dd>
-      <dt>Node ID</dt><dd>${esc(osk.node_id ?? "—")}</dd>
-      <dt>Status</dt><dd>${statusBadge(meta.effective_status)}</dd>
-      <dt>Confidence</dt><dd>${esc(confidencePct(meta.confidence_score))}</dd>
-      <dt>Version</dt><dd>${esc(meta.version ?? "—")}</dd>
-      <dt>Created</dt><dd>${esc(fmtDate(meta.created_at))}</dd>
-      <dt>Last verified</dt><dd>${esc(fmtDate(lifecycle.last_verified))}</dd>
-      <dt>Author</dt><dd>${
-      esc(attribution.public_key ? shortCid(attribution.public_key) : "—")
-    }</dd>
-      <dt>Supersedes</dt><dd>${cidLinkOrText(osk.supersedes_cid?.["/"])}</dd>`;
+    const bodyHtml = payload.problem
+      ? renderProblem(payload.problem)
+      : payload.recipe
+      ? renderRecipe(payload.recipe)
+      : payload.guide
+      ? renderGuide(payload.guide)
+      : payload.verification
+      ? renderVerification(payload.verification)
+      : `<p style="color:var(--text-muted)">No readable body.</p>`;
 
-    const relationshipBlocks = Object.entries(relationships).map(
-      ([name, rel]) => {
-        const items = (rel.data ?? [])
-          .map((r) =>
-            `<div>${linkedCid(r.id, `${r.type} ${shortCid(r.id)}`)}</div>`
-          )
-          .join("");
-        return `
-        <div class="panel">
-          <h2>${esc(name)}</h2>
-          ${items || '<div class="empty" style="padding:12px">None.</div>'}
-        </div>`;
-      },
-    ).join("");
-
-    const includedBlock = (body.included ?? []).length
-      ? `<div class="panel"><h2>Included</h2>${
-        body.included.map((r) =>
-          `<div>${linkedCid(r.id, `${r.type} ${titleOf(r)}`)}</div>`
-        ).join("")
-      }</div>`
-      : "";
-
-    const receiptsBlock = nodeType === "Recipe"
-      ? renderReceipts(await fetchReceipts(resource.id))
-      : "";
+    const articleMeta = `
+      <span class="item">${icon("clock")}${esc(fmtDate(meta.created_at))}</span>
+      <span class="item">${
+      esc(confidencePct(meta.confidence_score))
+    } confidence</span>
+      <span class="item mono">${esc(t)} · v${esc(meta.version ?? "1")}</span>
+      <span class="item">${pill(meta.effective_status ?? "draft")}</span>`;
 
     view.innerHTML = `
-      <a class="back" href="#/">← Browse</a>
+      <a class="back" href="#/">${icon("back")} Browse</a>
       <div class="detail">
         <div class="detail-main">
-          <div class="panel">
-            <h2>${esc(titleOf(resource))}</h2>
-            ${typeSection}
-          </div>
-          ${receiptsBlock}
+          <article class="article">
+            <header class="article-head">
+              <div class="kicker">${icon(TYPE_ICON[t] ?? "info")} ${
+      esc(t)
+    }</div>
+              <h1>${esc(titleOf(resource))}</h1>
+              ${
+      snippetOf(resource)
+        ? `<p class="lead">${esc(snippetOf(resource))}</p>`
+        : ""
+    }
+              <div class="article-meta">${articleMeta}</div>
+            </header>
+            <div class="article-body">
+              ${bodyHtml}
+            </div>
+          </article>
+          ${renderReceiptsPanel(receipts)}
         </div>
-        <aside>
-          <div class="panel"><h2>Metadata</h2><dl class="rows">${metaRows}</dl></div>
-          ${relationshipBlocks}
-          ${includedBlock}
+        <aside class="sidebar">
+          ${
+      metadataPanel(resource, lifecycle, attribution, versions, resource.id)
+    }
+          ${relationshipsPanel(resource)}
+          ${copyPanel(resource)}
         </aside>
       </div>`;
-    pagination.hidden = true;
+
+    bindCopyButtons();
   } catch (err) {
-    view.innerHTML = `<a class="back" href="#/">← Browse</a>
-      <div class="error-box">${esc(err.message)}</div>`;
-    pagination.hidden = true;
+    view.innerHTML = `
+      <a class="back" href="#/">${icon("back")} Browse</a>
+      <div class="error-box">
+        ${icon("error")}
+        <div><p style="font-weight:600">Could not load this node</p><p>${
+      esc(err.message)
+    }</p></div>
+      </div>`;
   }
 }
 
-function renderPayload(resource) {
-  const payload = resource.attributes?.payload ?? {};
-  if (payload.problem) return renderProblem(payload.problem);
-  if (payload.recipe) return renderRecipe(payload.recipe);
-  if (payload.guide) return renderGuide(payload.guide);
-  if (payload.verification) return renderVerification(payload.verification);
-  return "";
+function bindCopyButtons() {
+  for (const btn of view.querySelectorAll("[data-copy-cid]")) {
+    btn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copyCid);
+        const prev = btn.innerHTML;
+        btn.innerHTML = `${icon("copy")} Copied`;
+        setTimeout(() => (btn.innerHTML = prev), 1200);
+      } catch {
+        /* clipboard unavailable */
+      }
+    });
+  }
+  for (const btn of view.querySelectorAll("[data-copy]")) {
+    btn.addEventListener("click", async () => {
+      const pre = view.querySelector(`#code-${esc(btn.dataset.copy)}`);
+      if (!pre) return;
+      const code = pre.textContent;
+      try {
+        await navigator.clipboard.writeText(code);
+        const prev = btn.innerHTML;
+        btn.innerHTML = `${icon("copy")} Copied`;
+        setTimeout(() => (btn.innerHTML = prev), 1200);
+      } catch {
+        /* clipboard unavailable */
+      }
+    });
+  }
 }
 
-function renderProblem(problem) {
-  const symptoms = (problem.symptoms ?? []).map((s) => `
-    <div class="step">
-      <div class="step-title">${esc(s.type)}</div>
-      <p>${esc(s.description)}</p>
-      <p>Observable: ${esc(s.observable)} · Frequency: ${esc(s.frequency)}</p>
-    </div>`).join("");
+/* ---------- payload renderers ---------- */
 
+function renderProblem(problem) {
   const runtime = problem.environment?.runtime ?? {};
   const framework = problem.environment?.framework ?? {};
   const agent = problem.environment?.agent_context ?? {};
 
-  const summary = problem.summary ? `<p>${esc(problem.summary)}</p>` : "";
-  const impact = problem.impact
-    ? `<h3>Impact</h3><p>${esc(problem.impact)}</p>`
-    : "";
-  const reproduction = problem.reproduction
-    ? `<h3>Reproduction</h3>${renderSteps(problem.reproduction)}`
-    : "";
-  const diagnosis = problem.diagnosis
-    ? `<h3>Diagnosis</h3>${renderSteps(problem.diagnosis)}`
-    : "";
+  const parts = [];
+  if (problem.summary) parts.push(`<p>${esc(problem.summary)}</p>`);
+  if (problem.impact) {
+    parts.push(`<h2>Impact</h2><p>${esc(problem.impact)}</p>`);
+  }
 
-  return `
-    <div class="prose">
-      ${summary}
-      ${severityBadge(problem.severity)}
-      ${impact}
+  if (problem.symptoms?.length) {
+    parts.push(`<h2>Symptoms</h2>`);
+    for (const s of problem.symptoms) {
+      parts.push(`
+        <div class="step">
+          <span class="step-num">!</span>
+          <div class="step-body">
+            <div class="step-title">${esc(s.type)}</div>
+            <p>${esc(s.description)}</p>
+            <p style="font-size:13px">Observable: ${
+        esc(s.observable)
+      } · Frequency: ${esc(s.frequency)}</p>
+          </div>
+        </div>`);
+    }
+  }
+
+  if (problem.root_cause) {
+    parts.push(`
+      <h2>Root cause</h2>
       <dl class="rows">
-        <dt>Root cause</dt><dd>${esc(problem.root_cause?.mechanism ?? "—")}</dd>
+        <dt>Mechanism</dt><dd>${esc(problem.root_cause.mechanism ?? "—")}</dd>
         <dt>Causal chain</dt><dd>${
-    esc((problem.root_cause?.causal_chain ?? []).join(" → ") || "—")
-  }</dd>
-        <dt>Runtime</dt><dd>${esc(runtime.type ?? "—")} ${
+      esc((problem.root_cause.causal_chain ?? []).join(" → ") || "—")
+    }</dd>
+      </dl>`);
+  }
+
+  if (problem.reproduction?.length) {
+    parts.push(`<h2>Reproduction</h2>${renderSteps(problem.reproduction)}`);
+  }
+  if (problem.diagnosis?.length) {
+    parts.push(`<h2>Diagnosis</h2>${renderSteps(problem.diagnosis)}`);
+  }
+
+  parts.push(`
+    <h2>Environment</h2>
+    <dl class="rows">
+      <dt>Runtime</dt><dd>${esc(runtime.type ?? "—")} ${
     esc((runtime.versions ?? []).join(", "))
   }</dd>
-        <dt>Framework</dt><dd>${esc(framework.name ?? "—")} ${
+      <dt>Framework</dt><dd>${esc(framework.name ?? "—")} ${
     esc(framework.version ?? "")
   }</dd>
-        ${agent.model ? `<dt>Agent model</dt><dd>${esc(agent.model)}</dd>` : ""}
-        ${
+      ${agent.model ? `<dt>Agent model</dt><dd>${esc(agent.model)}</dd>` : ""}
+      ${
     agent.model
-      ? `<dt>Context</dt><dd>${esc(agent.context_window_used)} / ${
+      ? `<dt>Agent context</dt><dd>${esc(agent.context_window_used)} / ${
         esc(agent.context_window_size)
       } tokens · ${esc(agent.tool_count)} tools</dd>`
       : ""
   }
-      </dl>
-      ${reproduction}
-      ${diagnosis}
-      <h3>Symptoms</h3>
-      ${symptoms || '<p style="color:var(--text-muted)">None.</p>'}
-      <h3>Environment</h3>
-      <pre class="codeblock">${
-    esc(JSON.stringify(problem.environment ?? {}, null, 2))
-  }</pre>
-      ${renderTags(problem.tags)}
-      ${renderReferences(problem.references)}
-    </div>`;
+      <dt>Severity</dt><dd>${esc(problem.severity ?? "—")}</dd>
+    </dl>`);
+
+  parts.push(renderReferences(problem.references));
+  return parts.join("");
 }
 
 function renderRecipe(recipe) {
   const code = recipe.code ?? {};
-  const caveats = (recipe.caveats ?? []).map((c) => `
-    <li><strong>${esc(c.condition)}</strong>: ${esc(c.warning)}</li>`).join("");
-  const prerequisites = (recipe.prerequisites ?? []).map((p) => `
-    <li>${esc(p.description)}${
-    p.node ? ` — ${linkedCid(p.node["/"])}` : ""
-  }</li>`).join("");
-  const summary = recipe.summary ? `<p>${esc(recipe.summary)}</p>` : "";
+  const parts = [];
 
-  return `
-    <div class="prose">
-      ${summary}
-      <p>
-        ${
-    code.framework
-      ? `<span class="badge muted">${esc(code.framework)}</span> `
-      : ""
+  if (recipe.explanation) {
+    parts.push(`<p>${esc(recipe.explanation)}</p>`);
   }
-        <span class="badge muted">${esc(code.language ?? "unknown")}</span>
-      </p>
-      <dl class="rows">
-        <dt>Explanation</dt><dd>${esc(recipe.explanation ?? "—")}</dd>
-      </dl>
-      ${prerequisites ? `<h3>Prerequisites</h3><ul>${prerequisites}</ul>` : ""}
-      ${
-    recipe.steps?.length ? `<h3>Steps</h3>${renderSteps(recipe.steps)}` : ""
+
+  if (recipe.prerequisites?.length) {
+    parts.push(
+      `<h2>Prerequisites</h2><ul>${
+        recipe.prerequisites.map((p) =>
+          `<li>${esc(p.description)}${
+            p.node ? ` — ${nodeLink(p.node["/"])}` : ""
+          }</li>`
+        ).join("")
+      }</ul>`,
+    );
   }
-      <h3>Code</h3>
-      <pre class="codeblock">${esc(code.body ?? "")}</pre>
-      ${
-    recipe.verification
-      ? `<h3>Verification</h3><p>${esc(recipe.verification)}</p>`
-      : ""
+
+  if (recipe.steps?.length) {
+    parts.push(`<h2>Steps</h2>${renderSteps(recipe.steps)}`);
   }
-      ${caveats ? `<h3>Caveats</h3><ul>${caveats}</ul>` : ""}
-      ${renderTags(recipe.tags)}
-      ${renderReferences(recipe.references)}
-    </div>`;
+
+  if (code.body) {
+    parts.push(`
+      <h2>Code</h2>
+      ${renderCode(code, "recipe-main")}`);
+  }
+
+  if (recipe.verification) {
+    parts.push(`<h2>Verification</h2><p>${esc(recipe.verification)}</p>`);
+  }
+
+  parts.push(renderCalloutList(recipe.caveats, "warning", "Caveats"));
+  parts.push(renderReferences(recipe.references));
+  return parts.join("");
 }
 
-function verificationBadge(verification) {
-  const type = verification.type === "demonstration"
-    ? "Demonstrated"
-    : "Attested";
-  const cls = verification.result === "confirmed" ? "ok" : "warn";
-  return `<span class="badge ${cls}">${type} · ${
-    esc(verification.result)
+function epistemicPill(status) {
+  const cls = status === "verified"
+    ? "verified"
+    : status === "heuristic"
+    ? "heuristic"
+    : "neutral";
+  return `<span class="pill ${cls}"><span class="dot"></span>${
+    esc(status ?? "unverified")
   }</span>`;
 }
 
-function depthBadge(depth) {
-  const cls = depth === "beginner" ? "muted" : "accent";
-  return `<span class="badge ${cls}">${esc(depth)}</span>`;
-}
-
 function renderGuide(guide) {
-  const sections = (guide.sections ?? []).map((s) => `
-    <div class="step">
-      <div class="step-title">${esc(s.heading)} ${depthBadge(s.depth)}</div>
-      <p>${esc(s.claim)}</p>
-      <p>${verificationBadge(s.verification)}</p>
-    </div>`).join("");
-  const prerequisites = (guide.prerequisites ?? []).map((p) => `
-    <li>${linkedCid(p.node["/"])}${
-    p.required_depth ? ` (requires ${esc(p.required_depth)})` : ""
-  }</li>`).join("");
-  const caveats = (guide.caveats ?? []).map((c) => `
-    <li><strong>${esc(c.condition)}</strong>: ${esc(c.warning)}</li>`).join("");
-  const statusCls = guide.epistemic_status === "verified"
-    ? "ok"
-    : guide.epistemic_status === "heuristic"
-    ? "warn"
-    : "muted";
-  const summary = guide.summary ? `<p>${esc(guide.summary)}</p>` : "";
+  const sections = guide.sections ?? [];
+  const parts = [];
 
-  return `
-    <div class="prose">
-      ${summary}
-      <p><span class="badge ${statusCls}">${
-    esc(guide.epistemic_status)
-  }</span></p>
-      ${prerequisites ? `<h3>Prerequisites</h3><ul>${prerequisites}</ul>` : ""}
-      <h3>Sections</h3>
-      ${sections || '<p style="color:var(--text-muted)">None.</p>'}
-      ${caveats ? `<h3>Caveats</h3><ul>${caveats}</ul>` : ""}
-      ${renderTags(guide.tags)}
-    </div>`;
+  if (guide.summary) parts.push(`<p>${esc(guide.summary)}</p>`);
+
+  parts.push(`<p>${epistemicPill(guide.epistemic_status)}</p>`);
+
+  if (sections.length >= 3) {
+    parts.push(`
+      <div class="toc">
+        <h4>In this guide</h4>
+        <ol>
+          ${
+      sections.map((s, i) =>
+        `<li><a href="#guide-sec-${i + 1}">${esc(s.heading)}</a></li>`
+      ).join("")
+    }
+        </ol>
+      </div>`);
+  }
+
+  if (guide.prerequisites?.length) {
+    parts.push(`<h2>Prerequisites</h2><ul>${
+      guide.prerequisites.map((p) => `
+        <li>${nodeLink(p.node["/"])}${
+        p.required_depth
+          ? ` <span class="tag">requires ${esc(p.required_depth)}</span>`
+          : ""
+      }</li>`).join("")
+    }</ul>`);
+  }
+
+  if (sections.length) {
+    for (const [i, s] of sections.entries()) {
+      const statusCls = s.verification?.result === "confirmed"
+        ? "verified"
+        : "heuristic";
+      const type = s.verification?.type === "demonstration"
+        ? "Demonstrated"
+        : "Attested";
+      parts.push(`
+        <h2 id="guide-sec-${i + 1}">${esc(s.heading)}</h2>
+        <p>${esc(s.claim)}</p>
+        <p><span class="pill ${statusCls}"><span class="dot"></span>${
+        esc(type)
+      } · ${esc(s.verification?.result ?? "unverified")}</span></p>`);
+    }
+  }
+
+  parts.push(renderCalloutList(guide.caveats, "warning", "Caveats"));
+  if (guide.source_attestation?.url) {
+    parts.push(`
+      <h2>Source</h2>
+      <p><a href="${
+      esc(guide.source_attestation.url)
+    }" target="_blank" rel="noreferrer">${
+      esc(guide.source_attestation.title ?? guide.source_attestation.url)
+    } ${icon("external")}</a></p>`);
+  }
+  parts.push(renderReferences(guide.references));
+  return parts.join("");
 }
 
 function renderVerification(verification) {
   const target = verification.target ?? {};
   const execution = verification.execution ?? {};
   const suite = execution.test_suite ?? {};
-  const cases = (suite.cases ?? []).map((c) => `
-    <tr>
-      <td>${esc(c.name)}</td>
-      <td>${esc(c.result)}</td>
-      <td>${esc(String(c.expected ?? ""))}</td>
-      <td>${esc(String(c.actual ?? ""))}</td>
-    </tr>`).join("");
+  const cases = suite.cases ?? [];
 
   return `
     <dl class="rows">
       <dt>Problem</dt><dd>${cidLinkOrText(target.problem_id?.["/"])}</dd>
       <dt>Solution</dt><dd>${cidLinkOrText(target.solution_id?.["/"])}</dd>
       <dt>Playground</dt><dd>${esc(execution.playground ?? "—")}</dd>
-      <dt>Environment hash</dt><dd>${
+      <dt>Environment hash</dt><dd class="mono">${
     esc(execution.environment_hash ?? "—")
   }</dd>
-      <dt>Result</dt><dd><span class="badge ${
-    (suite.failed ?? 0) > 0 ? "bad" : "ok"
-  }">${esc(suite.passed)} passed · ${esc(suite.failed)} failed</span></dd>
-      <dt>Timestamp</dt><dd>${esc(fmtDate(verification.timestamp))}</dd>
-      <dt>Valid until</dt><dd>${esc(fmtDate(verification.valid_until))}</dd>
+      <dt>Result</dt><dd><span class="pill ${
+    (suite.failed ?? 0) > 0 ? "disputed" : "active"
+  }"><span class="dot"></span>${esc(suite.passed)} passed · ${
+    esc(suite.failed)
+  } failed</span></dd>
+      <dt>Timestamp</dt><dd>${esc(fmtDateTime(verification.timestamp))}</dd>
+      <dt>Valid until</dt><dd>${esc(fmtDateTime(verification.valid_until))}</dd>
     </dl>
-    <h3>Test suite</h3>
+    <h2>Test suite</h2>
     <table class="cases">
       <thead><tr><th>Case</th><th>Result</th><th>Expected</th><th>Actual</th></tr></thead>
-      <tbody>${cases}</tbody>
+      <tbody>
+        ${
+    cases.map((c) => `
+          <tr>
+            <td>${esc(c.name)}</td>
+            <td class="${c.result === "pass" ? "pass" : "fail"}">${
+      esc(c.result)
+    }</td>
+            <td class="mono">${esc(String(c.expected ?? ""))}</td>
+            <td class="mono">${esc(String(c.actual ?? ""))}</td>
+          </tr>`).join("")
+  }
+      </tbody>
     </table>`;
 }
+
+/* ---------- routing ---------- */
 
 function render() {
   const hash = location.hash || "#/";
@@ -677,6 +1060,8 @@ function render() {
     renderBrowse();
   }
 }
+
+/* ---------- search ---------- */
 
 searchInput.addEventListener("input", () => {
   clearTimeout(searchTimer);
@@ -689,6 +1074,28 @@ searchInput.addEventListener("input", () => {
       renderBrowse();
     }
   }, 250);
+});
+
+addEventListener("keydown", (e) => {
+  const tag = document.activeElement?.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (e.key === "/") {
+    e.preventDefault();
+    searchInput.focus();
+    searchInput.select();
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    searchInput.focus();
+    searchInput.select();
+  }
+});
+
+addEventListener("keyup", (e) => {
+  if (e.key === "Escape" && document.activeElement === searchInput) {
+    searchInput.blur();
+  }
 });
 
 addEventListener("hashchange", render);
