@@ -156,6 +156,23 @@ function guideNode(
           {
             heading: "How it works",
             claim: "Streaming keeps memory bounded.",
+            body: {
+              explanation:
+                "Reading the input row by row means only one row is ever alive at once.",
+              steps: [
+                {
+                  title: "Open a reader",
+                  body: "Read chunks incrementally.",
+                  code: "const reader = file.readable.getReader();",
+                },
+              ],
+              code: {
+                language: "typescript",
+                framework: "deno",
+                body: "for (const row of rows) parse(row);",
+              },
+              example: "A 500MB upload stays under 64MB of resident memory.",
+            },
             depth: "beginner",
             verification: {
               type: "demonstration",

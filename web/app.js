@@ -262,10 +262,17 @@ function renderSteps(steps) {
         <div class="step-body">
           <div class="step-title">${esc(s.title)}</div>
           <p>${esc(s.body)}</p>
-          ${s.code ? renderCode(s.code, `step-${i + 1}`) : ""}
+          ${s.code ? renderStepCode(s.code, `step-${i + 1}`) : ""}
         </div>
       </div>`).join("")
   }</div>`;
+}
+
+function renderStepCode(code, id) {
+  if (typeof code === "string") {
+    return `<pre class="codeblock" id="code-${esc(id)}">${esc(code)}</pre>`;
+  }
+  return renderCode(code, id);
 }
 
 function renderCode(code, id) {
@@ -1030,25 +1037,31 @@ function renderGuide(guide) {
       const type = s.verification?.type === "demonstration"
         ? "Demonstrated"
         : "Attested";
+      const body = s.body ?? {};
       parts.push(`
         <h2 id="guide-sec-${i + 1}">${esc(s.heading)}</h2>
         <p>${esc(s.claim)}</p>
         <p><span class="pill ${statusCls}"><span class="dot"></span>${
         esc(type)
       } · ${esc(s.verification?.result ?? "unverified")}</span></p>`);
+      if (body.explanation) {
+        parts.push(body.explanation.split(/\n\n+/).map((p) =>
+          `<p>${esc(p)}</p>`
+        ).join(""));
+      }
+      if (body.steps?.length) parts.push(renderSteps(body.steps));
+      if (body.code) {
+        parts.push(`<h3>Implementation</h3>${renderCode(body.code, `guide-sec-${i + 1}`)}`);
+      }
+      if (body.example) {
+        parts.push(`<div class="callout example"><strong>Example</strong><p>${
+          esc(body.example)
+        }</p></div>`);
+      }
     }
   }
 
   parts.push(renderCalloutList(guide.caveats, "warning", "Caveats"));
-  if (guide.source_attestation?.url) {
-    parts.push(`
-      <h2>Source</h2>
-      <p><a href="${
-      esc(guide.source_attestation.url)
-    }" target="_blank" rel="noreferrer">${
-      esc(guide.source_attestation.title ?? guide.source_attestation.url)
-    } ${icon("external")}</a></p>`);
-  }
   parts.push(renderReferences(guide.references));
   return parts.join("");
 }

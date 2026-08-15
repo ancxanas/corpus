@@ -28,10 +28,56 @@
               "minItems": 1,
               "items": {
                 "type": "object",
-                "required": ["heading", "claim", "depth", "verification"],
+                "required": [
+                  "heading",
+                  "claim",
+                  "body",
+                  "depth",
+                  "verification"
+                ],
                 "properties": {
                   "heading": { "type": "string", "minLength": 1 },
                   "claim": { "type": "string", "minLength": 1 },
+                  "body": {
+                    "type": "object",
+                    "required": ["explanation"],
+                    "properties": {
+                      "explanation": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 20000
+                      },
+                      "steps": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": ["title", "body"],
+                          "properties": {
+                            "title": { "type": "string", "minLength": 1 },
+                            "body": { "type": "string", "minLength": 1 },
+                            "code": { "type": "string", "minLength": 1 }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "code": {
+                        "type": "object",
+                        "required": ["language", "body"],
+                        "properties": {
+                          "language": { "type": "string", "minLength": 1 },
+                          "framework": { "type": "string", "minLength": 1 },
+                          "body": { "type": "string", "minLength": 1 }
+                        },
+                        "additionalProperties": false
+                      },
+                      "example": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 20000
+                      }
+                    },
+                    "additionalProperties": false
+                  },
                   "depth": {
                     "enum": ["beginner", "intermediate", "advanced"]
                   },
@@ -79,6 +125,18 @@
                 "properties": {
                   "condition": { "type": "string", "minLength": 1 },
                   "warning": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": false
+              }
+            },
+            "references": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["title", "url"],
+                "properties": {
+                  "title": { "type": "string", "minLength": 1 },
+                  "url": { "type": "string", "minLength": 1 }
                 },
                 "additionalProperties": false
               }

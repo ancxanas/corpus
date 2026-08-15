@@ -163,6 +163,10 @@ export function guideNode(
           {
             heading: "Why recursion overflows",
             claim: "Deep recursion exceeds the default call stack.",
+            body: {
+              explanation:
+                "Each recursive call reserves stack space, so deep recursion exhausts the default stack.",
+            },
             depth: "beginner",
             verification: {
               type: "demonstration",

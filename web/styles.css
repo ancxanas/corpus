@@ -860,6 +860,12 @@ button {
   color: var(--warn);
 }
 
+.callout.example {
+  border-color: rgba(94, 148, 255, 0.35);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
 /* ---------- Definition list ---------- */
 
 dl.rows {

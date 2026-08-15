@@ -31,6 +31,9 @@ export const guideModule: NodeTypeModule = {
             {
               heading: "Section heading",
               claim: "A specific, testable claim.",
+              body: {
+                explanation: "Explain the claim and how to apply it.",
+              },
               depth: "beginner",
               verification: {
                 type: "demonstration",

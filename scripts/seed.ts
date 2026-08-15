@@ -1380,12 +1380,24 @@ await ingestVerification(vCsvPeer, peer.secretKeyHex);
 const guideStreaming = guideNode(ID(16), author.publicKeyHex, {
   title: "Streaming data through a memory-constrained service",
   summary:
-    "A practical walkthrough of processing large inputs row by row instead of buffering them whole.",
+    "A practical walkthrough of processing large inputs row by row instead of buffering them whole, so memory stays flat for any file size.",
   epistemic_status: "verified",
   sections: [
     {
       heading: "Why whole-file buffering fails",
       claim: "Buffering a 1GB upload requires roughly twice its size in RAM.",
+      body: {
+        explanation:
+          "When a handler reads the entire request body before parsing, the runtime holds several copies of the data at once: the raw bytes arrive in chunks, then converting to a string allocates a second buffer, and splitting that string into rows allocates a third set of strings. V8 grows the heap to fit all of them, so a 150MB fixture routinely spikes resident memory past 450MB. On a worker with a small heap limit this ends in the out-of-memory crash described in the upload problem.\n\nThe fix is not to read less data. The fix is to never materialize the whole input in memory at one time.",
+        code: {
+          language: "typescript",
+          framework: "deno",
+          body:
+            `const text = await req.text();\nconst rows = text.split('\\n');\nfor (const row of rows) parse(row);`,
+        },
+        example:
+          "Uploading a 150MB CSV with this pattern spiked RSS to 468MB and the worker was killed. The same upload handled row-by-row stayed under 64MB.",
+      },
       depth: "beginner",
       verification: {
         type: "demonstration",
@@ -1398,6 +1410,38 @@ const guideStreaming = guideNode(ID(16), author.publicKeyHex, {
       heading: "Row-based streaming bounds memory",
       claim:
         "A row-at-a-time read loop keeps resident memory flat for any input size.",
+      body: {
+        explanation:
+          "Read the request body as a stream and parse one row at a time. Each chunk arrives incrementally, complete rows are parsed and then released, and only the current chunk plus one partial row are ever alive at once. Resident memory therefore depends on the row size, not the file size.\n\nThis is the core of the streaming recipe: the reader pulls chunks, the buffer accumulates a partial row between chunks, and the parser consumes complete rows as they appear.",
+        steps: [
+          {
+            title: "Open a reader on the body stream",
+            body:
+              "Use a ReadableStream reader so chunks arrive incrementally instead of buffering the whole file.",
+            code: "const reader = file.readable.getReader();",
+          },
+          {
+            title: "Split each chunk into complete rows",
+            body:
+              "Keep a trailing partial row in a buffer between chunks, then parse the complete rows.",
+            code:
+              "const rows = buffer.split('\\n');\nbuffer = rows.pop() ?? '';\nfor (const row of rows) parse(row);",
+          },
+          {
+            title: "Verify memory stays bounded",
+            body:
+              "Run the handler against a 500MB fixture and watch resident memory during the upload.",
+          },
+        ],
+        code: {
+          language: "typescript",
+          framework: "deno",
+          body:
+            `let buffer = '';\nwhile (true) {\n  const { done, value } = await reader.read();\n  if (done) break;\n  buffer += new TextDecoder().decode(value);\n  const rows = buffer.split('\\n');\n  buffer = rows.pop() ?? '';\n  for (const row of rows) parse(row);\n}`,
+        },
+        example:
+          "A 500MB upload peaked at 61MB RSS. Doubling the file to 1GB changed the peak by less than 2MB.",
+      },
       depth: "beginner",
       verification: {
         type: "demonstration",
@@ -1407,9 +1451,56 @@ const guideStreaming = guideNode(ID(16), author.publicKeyHex, {
       },
     },
     {
-      heading: "Matching the solution to the failure",
+      heading: "Handling chunk boundaries without losing rows",
+      claim:
+        "Keeping a trailing partial row in a buffer prevents data loss at chunk edges.",
+      body: {
+        explanation:
+          "Network chunks do not respect row boundaries. A single chunk can end in the middle of a row, and the next chunk starts with the rest of it. If you split each chunk in isolation you either drop that partial row or parse it as a truncated record.\n\nThe buffer keeps the incomplete tail between chunks: pop the last segment off the split result and carry it forward, then prepend it to the next chunk. Rows are only parsed once the splitter has a complete line.",
+        code: {
+          language: "typescript",
+          framework: "deno",
+          body:
+            `const rows = buffer.split('\\n');\nbuffer = rows.pop() ?? '';\nfor (const row of rows) parse(row);`,
+        },
+        example:
+          "Chunk 1 ends mid-record as 'alice,1,Enginee'. The tail 'Enginee' stays in the buffer. Chunk 2 starts 'r,42' and the combined row parses as 'alice,1,Engineer,42'.",
+      },
+      depth: "intermediate",
+      verification: {
+        type: "demonstration",
+        demonstration_cid: { "/": rCsv },
+        playground_receipt: { "/": vCsvCid },
+        result: "confirmed",
+      },
+    },
+    {
+      heading: "Matching the recipe to the failure mode",
       claim:
         "The streaming recipe resolves the crash described in the upload problem.",
+      body: {
+        explanation:
+          "The upload problem records a web server that crashes on a large CSV upload, with the failure reproducible under a 150MB fixture. The streaming recipe is the demonstrated fix: it removes the all-at-once buffering that exhausted the worker heap.\n\nThe corpus links the two nodes through the problem's solutions relationship and through the verification receipt. When you open the recipe you can see its evidence: the receipt the server replayed, the environment it ran in, and the confidence score the independent sources produce.",
+        steps: [
+          {
+            title: "Reproduce the crash",
+            body:
+              "Generate the fixture from the problem's reproduction steps and confirm the worker dies.",
+          },
+          {
+            title: "Apply the streaming loop",
+            body:
+              "Replace the buffered read with the row-at-a-time loop from the recipe.",
+          },
+          {
+            title: "Re-run the same fixture",
+            body:
+              "The handler completes and memory stays bounded, matching the recipe's verification.",
+          },
+        ],
+        example:
+          "Before the fix: crash at 468MB. After the fix: 500MB upload completes at 61MB peak, and the receipt records the pass.",
+      },
       depth: "intermediate",
       verification: {
         type: "demonstration",
@@ -1432,22 +1523,42 @@ const guideStreaming = guideNode(ID(16), author.publicKeyHex, {
   caveats: [
     {
       condition: "quoted CSV fields contain embedded newlines",
-      warning: "swap the naive splitter for a real tokenizer.",
+      warning:
+        "swap the naive splitter for a real tokenizer; split('\\n') cannot see inside quotes.",
     },
   ],
   tags: ["streaming", "memory", "csv"],
+  references: [{
+    title: "WHATWG Streams Standard",
+    url: "https://streams.spec.whatwg.org/",
+  }, {
+    title: "MDN: ReadableStream",
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream",
+  }],
 });
 
 const guideConfidence = guideNode(ID(17), author.publicKeyHex, {
   title: "Building confidence through verifiable receipts",
   summary:
-    "How the corpus turns solution claims into measurable confidence using independent verification receipts.",
+    "How the corpus turns solution claims into measurable confidence using independent verification receipts, and how to read that confidence honestly.",
   epistemic_status: "heuristic",
   sections: [
     {
-      heading: "Receipts raise confidence",
+      heading: "How receipts raise confidence",
       claim:
         "An independent passing receipt raises a recipe's confidence score by one step.",
+      body: {
+        explanation:
+          "Confidence comes from the number of independent passing receipts a recipe collects, not from how loudly anyone vouches for it. Each distinct verifier key that the server replayed counts as one source, and each additional source closes half of the remaining gap to a perfect score: 1 - 0.5^n.\n\nThe steps matter as much as the score. One source lands at 0.5, a second at 0.75, a third at 0.875. Notice that the third receipt is worth less than the second: confidence grows quickly and then asymptotes, so a handful of independent sources is usually enough.",
+        code: {
+          language: "typescript",
+          framework: "deno",
+          body:
+            `function confidence(sources: number): number {\n  return 1 - 0.5 ** sources;\n}\n\nconfidence(1); // 0.5\nconfidence(2); // 0.75\nconfidence(3); // 0.875`,
+        },
+        example:
+          "The worker memory recipe carries three receipts from three different keys, so its score is 0.875, not 0.5 or 0.75.",
+      },
       depth: "intermediate",
       verification: {
         type: "source_attestation",
@@ -1459,10 +1570,66 @@ const guideConfidence = guideNode(ID(17), author.publicKeyHex, {
       heading: "Sources must be independent",
       claim:
         "Only receipts the server replayed count, and each distinct key counts once.",
+      body: {
+        explanation:
+          "Independence is what makes the score meaningful. A single operator re-verifying the same solution twenty times proves the recipe once, not twenty times, so the server counts one key once. Receipts the server never replayed do not count at all: a claimed pass with no replay evidence is just an assertion.\n\nTrusted keys are the one exception to the usual sybil defenses. An operator can seed a small set of trusted verifier keys that weight fully from the start, while every other key must earn weight through age, authored work, and cross-verification.",
+        example:
+          "Ten receipts signed by the same key still show distinct_keys: 1 and confidence 0.5. Three receipts from three keys show confidence 0.875.",
+      },
       depth: "intermediate",
       verification: {
         type: "source_attestation",
         attested_source: "https://corpus.example/spec/v0.3.0#independence",
+        result: "confirmed",
+      },
+    },
+    {
+      heading: "Reading provenance on a recipe",
+      claim:
+        "A recipe's meta.provenance exposes the receipts, keys, and trusted verifiers behind its score.",
+      body: {
+        explanation:
+          "The score is a summary; provenance is the audit trail. A recipe response carries meta.provenance with the receipt count, how many were replayed, how many distinct keys produced them, whether a trusted verifier is among them, and how old the oldest verifier key is.\n\nWhen the numbers disagree, trust the provenance. If replayed_count is lower than receipt_count, some receipts were claims without replay evidence. If distinct_keys is one, the score cannot move past 0.5 regardless of how many receipts exist.",
+        steps: [
+          {
+            title: "Open the recipe",
+            body: "GET /nodes/{cid} for the recipe and find meta.provenance.",
+          },
+          {
+            title: "Compare receipt and key counts",
+            body:
+              "replayed_count should equal distinct_keys; any gap means unplayed claims.",
+          },
+          {
+            title: "Check the trust signal",
+            body:
+              "has_trusted_verifier and the key weights tell you who supplied the evidence.",
+          },
+        ],
+        example:
+          "The memory recipe returns receipt_count: 3, replayed_count: 3, distinct_keys: 3, has_trusted_verifier: true. The queue recipe returns distinct_keys: 1 and scores 0.5.",
+      },
+      depth: "beginner",
+      verification: {
+        type: "source_attestation",
+        attested_source: "https://corpus.example/spec/v0.3.0#provenance",
+        result: "confirmed",
+      },
+    },
+    {
+      heading: "When confidence is zero",
+      claim:
+        "A latest failed receipt keeps a recipe out of the active status even with earlier passes.",
+      body: {
+        explanation:
+          "Confidence measures support; effective status reflects the latest evidence. A recipe whose most recent receipt failed does not keep the status it had before, because the fresh signal disagrees with the old passes. A disputed latest result is the strongest reason to re-inspect a recipe before depending on it.\n\nThis is deliberate: the effective status is the operational answer, the confidence score is the long-run average of support, and you should never substitute one for the other.",
+        example:
+          "The config-merge recipe has a passing history but its latest receipt failed, so its effective status is not active and its score reflects the failure rather than the earlier passes.",
+      },
+      depth: "advanced",
+      verification: {
+        type: "source_attestation",
+        attested_source: "https://corpus.example/spec/v0.3.0#effective-status",
         result: "confirmed",
       },
     },
@@ -1489,18 +1656,34 @@ const guideConfidence = guideNode(ID(17), author.publicKeyHex, {
         "re-check the claim against the current spec before relying on it.",
     },
   ],
-  tags: ["confidence", "verification"],
+  tags: ["confidence", "verification", "provenance"],
+  references: [{
+    title: "Corpus spec: trust model",
+    url: "https://corpus.example/spec/v0.3.0#trust",
+  }],
 });
 
 const guideTime = guideNode(ID(18), author.publicKeyHex, {
   title: "Handling time across timezones",
   summary:
-    "A short guide to storing instants in UTC and converting only at the display edge.",
+    "How to store instants in UTC, convert only at the display edge, and keep scheduled jobs honest across DST changes.",
   epistemic_status: "verified",
   sections: [
     {
       heading: "UTC is the source of truth",
       claim: "Storing instants in UTC removes DST from the storage layer.",
+      body: {
+        explanation:
+          "A wall-clock time like '2026-03-29 02:30' is ambiguous: on a DST change day that hour either does not exist or happens twice. An instant is not ambiguous, because it names a fixed point on the timeline. Store instants as UTC ISO strings with a trailing Z and all of the ambiguity disappears from your database and your comparisons.\n\nOnce instants live in UTC, ordering, arithmetic, and expiry logic are plain timestamp math. No code path ever reinterprets 'what hour is it here' when comparing two records.",
+        code: {
+          language: "typescript",
+          framework: "deno",
+          body:
+            `const at = new Date(cron);\nconst stored = at.toISOString(); // always ends in Z\n\n// comparisons are now trivially correct\nif (stored < deadline.toISOString()) { ship(); }`,
+        },
+        example:
+          "Storing '2026-11-01T06:30:00.000Z' stays the same instant whether the machine's clock is in New York or Paris.",
+      },
       depth: "beginner",
       verification: {
         type: "demonstration",
@@ -1513,6 +1696,89 @@ const guideTime = guideNode(ID(18), author.publicKeyHex, {
       heading: "Convert only at display time",
       claim:
         "A scheduler that renders local time at the last step never drifts across DST boundaries.",
+      body: {
+        explanation:
+          "Every timezone has two different values at any moment: the instant, which is fixed, and the local representation, which depends on where the reader sits. If you convert early and then operate on the converted value, DST moves your numbers. Convert once, at the edge, when you are about to show a human a time or fire a user-facing reminder.\n\nIntl.DateTimeFormat handles the zone conversion, including the offsets in effect on that particular date, so you never hand-roll an offset table.",
+        steps: [
+          {
+            title: "Keep the instant in UTC",
+            body: "Persist and compare ISO-8601 UTC strings only.",
+          },
+          {
+            title: "Format with an explicit zone",
+            body:
+              "Use Intl.DateTimeFormat with the target IANA timezone at render time.",
+            code:
+              "new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York' }).format(at);",
+          },
+        ],
+        code: {
+          language: "typescript",
+          framework: "deno",
+          body:
+            `const fmt = new Intl.DateTimeFormat('en-US', {\n  timeZone: 'America/New_York',\n  dateStyle: 'full', timeStyle: 'short',\n});\nconst local = fmt.format(new Date(stored));`,
+        },
+        example:
+          "The same instant renders as 11:30 AM on one machine and 05:30 PM on another, with no storage change.",
+      },
+      depth: "intermediate",
+      verification: {
+        type: "demonstration",
+        demonstration_cid: { "/": rTz },
+        playground_receipt: { "/": vTzCid },
+        result: "confirmed",
+      },
+    },
+    {
+      heading: "Recompute offsets at run time",
+      claim:
+        "Comparing the stored offset against the current one and adjusting prevents a job firing an hour early or late.",
+      body: {
+        explanation:
+          "Schedulers that cache a fixed offset go stale when a DST change lands. The timezone-safe recipe recomputes the current offset at run time, compares it with the value the job was scheduled against, and adjusts before firing. The comparison uses getTimezoneOffset, which reflects the rules in effect for the machine's zone on the actual date.",
+        code: {
+          language: "typescript",
+          framework: "deno",
+          body:
+            `const at = new Date(cron);\nconst offset = new Date().getTimezoneOffset();\nif (at.getTimezoneOffset() !== offset) { adjust(at); }`,
+        },
+        example:
+          "A 02:30 job scheduled in Europe/Paris recomputes its offset on the spring-forward day and fires at the correct UTC instant instead of an hour off.",
+      },
+      depth: "intermediate",
+      verification: {
+        type: "demonstration",
+        demonstration_cid: { "/": rTz },
+        playground_receipt: { "/": vTzCid },
+        result: "confirmed",
+      },
+    },
+    {
+      heading: "Verifying across a DST boundary",
+      claim:
+        "A job scheduled across a DST boundary fires at the same UTC instant before and after the change.",
+      body: {
+        explanation:
+          "The proof of a timezone-safe scheduler is that the instant it fires does not move when the clocks change. Set up a job that lands within the DST window, capture the UTC instant it fires, move the system clock across the boundary, and capture it again. If the instants match, the storage and conversion layers did their job and the scheduler is safe to keep.\n\nThis is exactly the verification the timezone recipe carries: schedule once, cross the boundary, observe the same UTC instant on both sides.",
+        steps: [
+          {
+            title: "Schedule inside the DST window",
+            body:
+              "Pick a local time that falls on the change day, such as 02:30 on a spring-forward date.",
+          },
+          {
+            title: "Record the UTC firing instant",
+            body: "Log the instant the job actually fires, in UTC.",
+          },
+          {
+            title: "Cross the boundary and repeat",
+            body:
+              "Move the clock past the change, run the same schedule, and compare instants.",
+          },
+        ],
+        example:
+          "Before the boundary the job fires at 06:30Z; after it fires at 06:30Z again. The scheduler did not drift.",
+      },
       depth: "intermediate",
       verification: {
         type: "demonstration",
@@ -1532,19 +1798,42 @@ const guideTime = guideNode(ID(18), author.publicKeyHex, {
       required_depth: "beginner",
     },
   ],
+  caveats: [
+    {
+      condition: "users in multiple timezones share one schedule",
+      warning:
+        "decide whether the instant or the wall-clock time is the source of truth.",
+    },
+  ],
   tags: ["time", "timezones", "cron"],
+  references: [{
+    title: "IANA Time Zone Database",
+    url: "https://www.iana.org/time-zones",
+  }],
 });
 
 const guideRetries = guideNode(ID(19), author.publicKeyHex, {
   title: "Building reliable retry logic",
   summary:
-    "How to retry failed HTTP calls without turning a small outage into a fleet-wide retry storm.",
+    "How to retry failed HTTP calls without turning a small outage into a fleet-wide retry storm: exponential backoff, jitter, Retry-After, and idempotency.",
   epistemic_status: "heuristic",
   sections: [
     {
       heading: "Exponential backoff beats fixed intervals",
       claim:
         "Doubling the delay on each attempt spreads retries and clears an outage in fewer total attempts.",
+      body: {
+        explanation:
+          "A fixed interval retries on a metronome: every failed client retries at the same moment, over and over, until the outage clears. Exponential backoff doubles the delay after each attempt, so early attempts retry quickly while the load on the failing service drops off dramatically over time. A 60-second outage that would take many synchronized fixed-interval attempts clears in a handful of exponentially spaced ones.\n\nClamp the delay so a long outage does not produce a multi-minute wait: cap each attempt at a configured maximum backoff.",
+        code: {
+          language: "typescript",
+          framework: "deno",
+          body:
+            `const res = await fetch(url, opts);\nif (res.status < 500 && res.status !== 429) return res;\nif (attempt > MAX_ATTEMPTS) throw new Error('retries exhausted');\nconst delay = Math.min(BASE_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);\nawait sleep(delay);`,
+        },
+        example:
+          "BASE_MS = 100ms gives waits of 100ms, 200ms, 400ms, 800ms, then a clamp. A 60-second outage clears in under 10 seconds of wall time with at most 6 attempts.",
+      },
       depth: "intermediate",
       verification: {
         type: "source_attestation",
@@ -1557,6 +1846,18 @@ const guideRetries = guideNode(ID(19), author.publicKeyHex, {
       heading: "Jitter breaks synchronized retry waves",
       claim:
         "Adding random jitter prevents a fleet from retrying at the same instant and re-triggering the outage.",
+      body: {
+        explanation:
+          "Even exponential backoff is synchronized: a fleet of clients that fail together computes the same delays and retries in lockstep, and each retry wave can be big enough to keep the outage alive. Jitter randomizes each wait inside a small window, so clients diverge after the first attempt.\n\nThe recipe randomizes within a fraction of the base delay. The divergence compounds across attempts, which is what flattens the retry waves.",
+        code: {
+          language: "typescript",
+          framework: "deno",
+          body:
+            `const base = BASE_MS * 2 ** (attempt - 1);\nconst jitter = Math.floor(Math.random() * base * 0.2);\nawait sleep(Math.min(base + jitter, MAX_BACKOFF_MS));`,
+        },
+        example:
+          "100 clients fail at 10:00:00. With jitter their second attempts land between 10:00:01 and 10:00:02 instead of all at 10:00:02.",
+      },
       depth: "intermediate",
       verification: {
         type: "source_attestation",
@@ -1569,11 +1870,46 @@ const guideRetries = guideNode(ID(19), author.publicKeyHex, {
       heading: "Honor Retry-After",
       claim:
         "Servers signal how long to wait via the Retry-After header; respecting it beats a guessed schedule.",
+      body: {
+        explanation:
+          "The server knows its own recovery curve; your client does not. A 429 or 503 response can carry a Retry-After header naming either a duration in seconds or an HTTP date. When it is present, sleep for that long and skip your own backoff for that attempt.\n\nThe header is authoritative for that attempt. It may exceed your computed delay, and overriding it with a shorter local guess is exactly the kind of optimism that keeps outages alive.",
+        code: {
+          language: "typescript",
+          framework: "deno",
+          body:
+            `if (res.status === 429 || res.status === 503) {\n  const after = res.headers.get('retry-after');\n  if (after) {\n    await sleep(parseRetryAfter(after));\n    continue;\n  }\n}`,
+        },
+        example:
+          "A 429 with 'Retry-After: 30' tells the client to wait 30 seconds, no matter what its backoff schedule computed.",
+      },
       depth: "beginner",
       verification: {
         type: "source_attestation",
         attested_source:
           "https://www.rfc-editor.org/rfc/rfc9110#section-10.2.3",
+        result: "confirmed",
+      },
+    },
+    {
+      heading: "Make retries safe to run twice",
+      claim:
+        "Only retry idempotent requests, or guard the handler with an idempotency key.",
+      body: {
+        explanation:
+          "A retry re-sends the request. If the first attempt actually succeeded but the response was lost, a non-idempotent retry runs the operation twice: two charges, two emails, two rows. Retry safely by restricting retries to methods the HTTP spec marks idempotent, and by making the handler idempotent with a key the caller sends on every attempt.\n\nThe client generates one idempotency key per logical operation and repeats it on retries, so the server can recognize and deduplicate the duplicate.",
+        code: {
+          language: "typescript",
+          framework: "deno",
+          body:
+            `const res = await fetch(url, {\n  method: 'POST',\n  headers: { 'Idempotency-Key': key },\n  body,\n});`,
+        },
+        example:
+          "A checkout retries a POST with the same Idempotency-Key. The payment service completes once and returns the stored result on the duplicate.",
+      },
+      depth: "advanced",
+      verification: {
+        type: "source_attestation",
+        attested_source: "https://www.rfc-editor.org/rfc/rfc9110#section-9.2.2",
         result: "confirmed",
       },
     },
@@ -1600,18 +1936,72 @@ const guideRetries = guideNode(ID(19), author.publicKeyHex, {
     },
   ],
   tags: ["http", "retries", "backoff"],
+  references: [{
+    title: "AWS: Exponential Backoff and Jitter",
+    url:
+      "https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/",
+  }, {
+    title: "RFC 9110: Retry-After",
+    url: "https://www.rfc-editor.org/rfc/rfc9110#section-10.2.3",
+  }],
 });
 
 const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
   title: "Diagnosing memory leaks in long-running services",
   summary:
-    "A deeper guide to finding retention bugs with heap snapshots, bounded pools, and verification receipts.",
+    "A deeper guide to finding retention bugs with memory sampling, differential heap snapshots, bounded pools, and verification receipts.",
   epistemic_status: "heuristic",
   sections: [
+    {
+      heading: "Measure before you guess",
+      claim:
+        "Sampling process RSS across a load run shows whether memory actually grows before you hunt for a cause.",
+      body: {
+        explanation:
+          "Leak hunts fail when they start from a hunch. The first tool is measurement: run a realistic load pattern and sample process RSS at a fixed interval. A flat series of samples means the growth you saw in the moment was garbage not yet collected; a steady upward slope is the leak.\n\nTake the samples programmatically so the numbers are honest. process.memoryUsage().rss gives the resident set, and collecting it every few seconds for the duration of a load run produces the curve that tells you whether there is anything to diagnose.",
+        code: {
+          language: "typescript",
+          framework: "deno",
+          body:
+            "setInterval(() => {\n  const { rss } = process.memoryUsage();\n  log('rss_' + Date.now() + '_' + rss);\n}, 5000);",
+        },
+        example:
+          "A worker that 'leaks' under a 1-hour load shows a flat 90MB line once you sample every 5s; a real retention bug climbs steadily to 400MB+.",
+      },
+      depth: "beginner",
+      verification: {
+        type: "source_attestation",
+        attested_source:
+          "https://nodejs.org/api/process.html#processmemoryusage",
+        result: "confirmed",
+      },
+    },
     {
       heading: "Differential heap snapshots localize retention",
       claim:
         "Comparing two heap snapshots an hour apart shows which object classes retained the most memory.",
+      body: {
+        explanation:
+          "RSS growth proves the leak; it does not say where. A heap snapshot records every object and the retaining path that keeps it alive. Take one snapshot at the start of a load run and a second an hour later, then diff the two. The classes with the largest added retained size are your suspects, and the retaining path in the diff names the container that refuses to let go.\n\nThe trick is the timing: the start snapshot must be after warm-up and the end snapshot must follow a forced GC, or the diff is polluted by ordinary garbage.",
+        steps: [
+          {
+            title: "Capture a warm baseline",
+            body:
+              "Run the service until memory stabilizes, force a GC, then take snapshot one.",
+          },
+          {
+            title: "Run the load pattern",
+            body: "Exercise the suspect path for an hour while sampling RSS.",
+          },
+          {
+            title: "Diff against the baseline",
+            body:
+              "Force a GC, take snapshot two, and inspect the largest retained-size deltas.",
+          },
+        ],
+        example:
+          "The diff shows Map instances holding 210MB more after the run, and the retaining path points at a per-request cache that never evicts.",
+      },
       depth: "advanced",
       verification: {
         type: "source_attestation",
@@ -1623,6 +2013,18 @@ const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
       heading: "Bounded pools cap worker growth",
       claim:
         "A fixed-size eviction pool keeps per-worker retained objects bounded under sustained load.",
+      body: {
+        explanation:
+          "Once the diff names a container, the fix is usually a cap. A per-worker pool that inserts without evicting grows with every request; give it a fixed size and evict the oldest entry on insert past the cap. The pool then behaves like an LRU: hot items stay, dead weight is released, and retained memory is bounded by the cap instead of by traffic.\n\nKeep the pool per worker and export its size as a metric, so the cap shows up in monitoring as a flat line rather than something you discover after the fact.",
+        code: {
+          language: "typescript",
+          framework: "deno",
+          body:
+            `const pool = new Map();\nconst MAX = 1024;\npool.set(item.id, item);\nif (pool.size > MAX) pool.delete(pool.keys().next().value);\nmetric.pool_size = pool.size;`,
+        },
+        example:
+          "Sustained load keeps the pool metric pinned at 1024 instead of climbing one entry per request.",
+      },
       depth: "intermediate",
       verification: {
         type: "demonstration",
@@ -1635,6 +2037,12 @@ const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
       heading: "Independent receipts confirm the fix",
       claim:
         "Three independent receipts for the pool recipe support a confidence score of 0.875.",
+      body: {
+        explanation:
+          "A fix is only as good as its evidence. The bounded-pool recipe carries three verification receipts from three different keys, all replayed by the server, so its confidence score is 1 - 0.5^3 = 0.875 and its provenance shows has_trusted_verifier: true.\n\nThat is the pattern to copy: reproduce, fix, then prove the fix with a replayed verification rather than a screenshot of a graph.",
+        example:
+          "Open the recipe and read meta.provenance: receipt_count 3, replayed_count 3, distinct_keys 3.",
+      },
       depth: "beginner",
       verification: {
         type: "demonstration",
@@ -1665,6 +2073,13 @@ const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
     },
   ],
   tags: ["memory", "leaks", "heap", "diagnosis"],
+  references: [{
+    title: "Node.js: process.memoryUsage",
+    url: "https://nodejs.org/api/process.html#processmemoryusage",
+  }, {
+    title: "Node.js: Heap profiler",
+    url: "https://nodejs.org/api/heap_profiler.html",
+  }],
 });
 
 await ingest("guides", guideStreaming);

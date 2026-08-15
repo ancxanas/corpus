@@ -121,6 +121,16 @@ export interface GuidePayload {
     sections: Array<{
       heading: string;
       claim: string;
+      body: {
+        explanation: string;
+        steps?: Step[];
+        code?: {
+          language: string;
+          framework?: string;
+          body: string;
+        };
+        example?: string;
+      };
       depth: GuideDepth;
       verification: {
         type: "demonstration" | "source_attestation";
@@ -138,6 +148,7 @@ export interface GuidePayload {
       condition: string;
       warning: string;
     }>;
+    references?: Array<{ title: string; url: string }>;
     tags?: string[];
   };
 }
