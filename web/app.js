@@ -57,7 +57,7 @@ const state = {
   next: null,
   prev: null,
   total: 0,
-  counts: { problems: 0, recipes: 0, guides: 0 },
+  counts: { problems: null, recipes: null, guides: null },
 };
 
 const view = document.getElementById("view");
@@ -315,12 +315,20 @@ function renderCalloutList(items, type, heading) {
 
 /* ---------- browse ---------- */
 
+function countValue(id) {
+  const v = state.counts[id];
+  return v === null || v === undefined ? "–" : v;
+}
+
 function tabsHtml() {
-  const counts = state.counts;
   const countFor = (id) =>
     id === "all"
-      ? counts.problems + counts.recipes + counts.guides
-      : counts[id] ?? 0;
+      ? countValue("problems") === "–" ||
+          countValue("recipes") === "–" ||
+          countValue("guides") === "–"
+        ? "–"
+        : countValue("problems") + countValue("recipes") + countValue("guides")
+      : countValue(id);
   return `
     <nav class="tabs" aria-label="Knowledge types">
       ${
@@ -471,6 +479,10 @@ async function renderBrowse() {
   try {
     await fetchCounts();
     if (token !== renderToken) return;
+    const chipsEl = view.querySelector(".stat-chips");
+    if (chipsEl) {
+      chipsEl.outerHTML = chipsHtml();
+    }
     const body = await api(`/nodes?${queryString()}`);
     if (token !== renderToken) return;
     state.next = body.links?.next ?? null;
@@ -548,20 +560,25 @@ function bindBrowseControls() {
   });
 }
 
+function chipsHtml() {
+  return `<div class="stat-chips">${
+    COLLECTIONS.filter((c) => c.id !== "all").map((c) => `
+      <div class="stat-chip">
+        <span class="value">${countValue(c.id)}</span>
+        <span class="label">${esc(c.label)}</span>
+      </div>`).join("")
+  }</div>`;
+}
+
 function heroBlock() {
   const hero = HERO[state.collection] ?? HERO.all;
-  const chips = COLLECTIONS.filter((c) => c.id !== "all").map((c) => `
-    <div class="stat-chip">
-      <span class="value">${state.counts[c.id] ?? 0}</span>
-      <span class="label">${esc(c.label)}</span>
-    </div>`).join("");
   return `
     <section class="page-head">
       <div>
         <h1>${esc(hero.title)}</h1>
         <p class="blurb">${esc(hero.blurb)}</p>
       </div>
-      <div class="stat-chips">${chips}</div>
+      ${chipsHtml()}
     </section>`;
 }
 

@@ -36,10 +36,12 @@ function usage(): never {
   console.log(
     "usage: corpus-seed [--url URL] [--data-dir DIR]\n" +
       "  --url URL      corpus server base URL (default: CORPUS_BASE_URL or http://127.0.0.1:8000)\n" +
-      "  --data-dir DIR directory for the index, blocks, and demo keys (default: data)\n" +
+      "  --data-dir DIR directory for the keys (default: data)\n" +
       "\n" +
-      "The seed wipes corpus.db* and blocks/ under --data-dir, then stores a fresh,\n" +
-      "deterministic dataset. Stop the server before seeding so the wipe succeeds.",
+      "The seed stores a deterministic dataset through the running server.\n" +
+      "It never deletes data. Re-running it skips nodes that already exist.\n" +
+      "For a clean slate, stop the server, delete corpus.db* and blocks/ under\n" +
+      "--data-dir, start the server, then seed.",
   );
   Deno.exit(2);
 }
@@ -257,22 +259,12 @@ async function ingestVerification(
   console.log(`posted  verification ${cid.slice(0, 12)}`);
 }
 
-async function wipeDataDir(dataDir: string): Promise<void> {
-  for (const file of ["corpus.db", "corpus.db-wal", "corpus.db-shm"]) {
-    await Deno.remove(`${dataDir}/${file}`).catch(() => {});
-  }
-  await Deno.remove(`${dataDir}/blocks`, { recursive: true }).catch(() => {});
-  console.log(`wiped ${dataDir}/corpus.db* and ${dataDir}/blocks/`);
-}
-
 const args = flagsOf(Deno.args);
 const url = args.url.replace(/\/+$/, "");
 const authorPath = `${args.dataDir}/demo-key.json`;
 const verifierPath = `${args.dataDir}/verifier-key.json`;
 const reviewerPath = `${args.dataDir}/reviewer-key.json`;
 const peerPath = `${args.dataDir}/peer-key.json`;
-
-await wipeDataDir(args.dataDir);
 
 const author = await loadOrCreateKey(authorPath);
 const verifier = await loadOrCreateKey(verifierPath);
