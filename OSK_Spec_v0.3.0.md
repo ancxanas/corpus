@@ -78,7 +78,10 @@ Every node MUST contain the following top-level fields:
   versions.
 - `osk.supersedes_cid` — MUST be the IPLD link to the previous version of this
   node. It MUST be omitted on the first version. The resulting chain MUST NOT
-  contain a cycle.
+  contain a cycle. It MUST reference a version whose `attribution.public_key`
+  matches this node's author key. A version whose `supersedes_cid` references a
+  version by a different author is quarantined: it does not advance the lineage
+  head, and The Corpus MUST mark it `effective_status` `disputed`.
 - `osk.knowledge_lifecycle.status` — MUST be one of `active`, `deprecated`,
   `disputed`, `draft`.
 - `osk.knowledge_lifecycle.last_verified` — ISO 8601 timestamp of the most
@@ -614,6 +617,10 @@ ingestion timestamp.
 
 - A `supersedes_cid` chain MUST NOT contain a cycle. The index MUST reject a
   node whose `supersedes_cid` chain contains a cycle.
+- A `supersedes_cid` MUST reference a version by the same author key. A version
+  that supersedes a node by a different author is quarantined: The Corpus MUST
+  set its `effective_status` to `disputed`, MUST NOT mark it as a head, and MUST
+  leave the target's head status unchanged.
 - A head is a version that no other version of the same `node_id` supersedes.
   The index MUST derive heads during rebuild.
 - A `node_id` with more than one head is forked. The index MUST set

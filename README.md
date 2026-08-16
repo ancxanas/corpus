@@ -15,7 +15,9 @@ JSON:API server. The system follows the OSK Specification v0.3.0 in
 - Read-only web UI for browsing, searching, filtering, and inspecting nodes,
   served from `/ui/`, in a Geist-inspired dark design language.
 - Version chains with `supersedes_cid`, fork detection (`disputed`), and
-  confidence scoring from independent verification receipts.
+  confidence scoring from independent verification receipts. Only the author of
+  a version may advance its lineage; a supersession by another author is
+  quarantined as `disputed` and never becomes the head.
 - Deprecation triggers evaluated against pinned versions.
 - Index rebuild from stored blocks.
 - CLI for key generation, node authoring, verification, search, and rebuild.

@@ -705,6 +705,71 @@ Deno.test("fork: two versions supersede the same head", async () => {
   await Deno.remove(env.dir, { recursive: true });
 });
 
+Deno.test("cross-author supersession is quarantined, owner stays head", async () => {
+  const env = await makeEnv();
+  const original = await env.index.getNode(env.problemCid);
+  const intruder = generateKeyPair();
+  const hostile = signed(
+    problemNode(intruder.publicKeyHex, {
+      nodeId: original!.node_id,
+      supersedesCid: env.problemCid,
+      title: "hostile takeover attempt",
+    }),
+    intruder.secretKeyHex,
+  );
+  await env.ingest.ingestNode(hostile);
+  const hostileCid = await cidOf(hostile);
+
+  const ownerHead = await env.index.getHeadVersion(original!.node_id);
+  const ownerNode = await env.index.getNode(env.problemCid);
+  const hostileNode = await env.index.getNode(hostileCid);
+  assertEquals(ownerHead.length, 1);
+  assertEquals(ownerHead[0]!.cid, env.problemCid);
+  assertEquals(ownerNode?.head, true);
+  assertEquals(ownerNode?.effective_status, "active");
+  assertEquals(hostileNode?.head, false);
+  assertEquals(hostileNode?.effective_status, "disputed");
+  const versions = await env.index.getVersions(original!.node_id);
+  assertEquals(versions.length, 2);
+  await Deno.remove(env.dir, { recursive: true });
+});
+
+Deno.test("quarantine persists across later same-author supersessions", async () => {
+  const env = await makeEnv();
+  const original = await env.index.getNode(env.problemCid);
+  const intruder = generateKeyPair();
+  const hostile = signed(
+    problemNode(intruder.publicKeyHex, {
+      nodeId: original!.node_id,
+      supersedesCid: env.problemCid,
+      title: "hostile takeover attempt",
+    }),
+    intruder.secretKeyHex,
+  );
+  await env.ingest.ingestNode(hostile);
+  const hostileCid = await cidOf(hostile);
+
+  const v2 = signed(
+    problemNode(env.authorKey.publicKeyHex, {
+      nodeId: original!.node_id,
+      supersedesCid: env.problemCid,
+      title: "owner v2",
+    }),
+    env.authorKey.secretKeyHex,
+  );
+  await env.ingest.ingestNode(v2);
+  const v2Cid = await cidOf(v2);
+
+  const heads = await env.index.getHeadVersion(original!.node_id);
+  const hostileNode = await env.index.getNode(hostileCid);
+  assertEquals(heads.length, 1);
+  assertEquals(heads[0]!.cid, v2Cid);
+  assertEquals(heads[0]!.effective_status, "active");
+  assertEquals(hostileNode?.head, false);
+  assertEquals(hostileNode?.effective_status, "disputed");
+  await Deno.remove(env.dir, { recursive: true });
+});
+
 Deno.test("index failure deletes the just-written block", async () => {
   const env = await makeEnv();
   const blocksDir = `${env.dir}/blocks`;

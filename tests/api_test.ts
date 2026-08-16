@@ -618,6 +618,43 @@ Deno.test("GET /nodes/by-node-id returns 409 on fork", async () => {
   await Deno.remove(dir, { recursive: true });
 });
 
+Deno.test("GET /nodes/by-node-id keeps the owner head after a cross-author supersession", async () => {
+  const { handler, index, authorKey, dir } = await makeServer();
+  const node = problemNode(authorKey.publicKeyHex, { title: "v1" });
+  const signed1 = signed(node, authorKey.secretKeyHex);
+  const cid1 = await cidOf(signed1);
+  await index.indexNode(signed1, cid1, new Date().toISOString());
+
+  const intruder = generateKeyPair();
+  const hostile = signed(
+    problemNode(intruder.publicKeyHex, {
+      nodeId: node.osk.node_id,
+      supersedesCid: cid1,
+      title: "hostile v2",
+    }),
+    intruder.secretKeyHex,
+  );
+  const hostileCid = await cidOf(hostile);
+  await index.indexNode(hostile, hostileCid, new Date().toISOString());
+
+  const res = await req(handler, `/nodes/by-node-id/${node.osk.node_id}`);
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  assertEquals(body.data.id, cid1);
+  assertEquals(body.data.relationships.versions.data.length, 2);
+  const versions = await req(
+    handler,
+    `/nodes/by-node-id/${node.osk.node_id}/versions`,
+  );
+  const versionsBody = await versions.json();
+  const ids = versionsBody.data.map(
+    (v: { id: string }) => v.id,
+  );
+  assertEquals(ids.includes(cid1), true);
+  assertEquals(ids.includes(hostileCid), true);
+  await Deno.remove(dir, { recursive: true });
+});
+
 Deno.test("GET /schemas/{node_type} returns the JSON Schema", async () => {
   const { handler, dir } = await makeServer();
   const res = await req(handler, "/schemas/recipes");

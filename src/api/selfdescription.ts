@@ -31,7 +31,9 @@ const NAME = "OSK Corpus";
 const DESCRIPTION =
   "Signed, content-addressed library of software engineering problems, " +
   "fixes, and verification receipts. Nodes are immutable, Ed25519-signed, " +
-  "and versioned via supersedes_cid.";
+  "and versioned via supersedes_cid. Only the author of a version may " +
+  "advance its lineage; a supersession by another author is quarantined " +
+  "as disputed and never becomes the head.";
 
 const QUERY_EXAMPLE =
   "GET /problems?search=heap%20exhaustion&filter[severity]=critical" +
@@ -53,8 +55,10 @@ const HOW_TO_WRITE =
 const TRUST_MODEL =
   "effective_status is a computed verdict. confidence_score 0.0 means no " +
   "replayed receipts or the latest receipt failed; it never sets " +
-  "effective_status. disputed means a failed receipt or an authorship " +
-  "conflict. disputed and deprecated nodes stay queryable. confidence_score " +
+  "effective_status. disputed means a failed receipt, an authorship " +
+  "conflict, or a quarantined supersession: a version that cites a node " +
+  "by a different author never becomes the head. disputed and deprecated " +
+  "nodes stay queryable. confidence_score " +
   "is per-solution: it reflects the receipts on one recipe, not its linked " +
   "problem. Problems are never verified directly, so a problem score stays " +
   "0. The score counts replayed receipts only: receipts the server did not " +

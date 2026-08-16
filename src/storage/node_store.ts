@@ -198,11 +198,12 @@ export class SqliteNodeStore implements NodeStore {
     db.exec("BEGIN IMMEDIATE;");
     try {
       let versionSeq = 1;
+      let crossAuthor = false;
       if (supersededCid) {
         const prev = db.prepare(
-          "SELECT version_seq, node_id FROM nodes WHERE cid = ?",
+          "SELECT version_seq, node_id, author_public_key FROM nodes WHERE cid = ?",
         ).get(supersededCid) as
-          | { version_seq: number; node_id: string }
+          | { version_seq: number; node_id: string; author_public_key: string }
           | undefined;
         if (!prev) {
           throw new InvalidNodeError(
@@ -215,13 +216,17 @@ export class SqliteNodeStore implements NodeStore {
           );
         }
         versionSeq = prev.version_seq + 1;
+        crossAuthor = prev.author_public_key !==
+          node.osk.attribution.public_key;
       }
 
-      const effective = computeEffectiveStatus(node, {
-        latestReceipt: null,
-        triggerFired: this.#triggerFired(node),
-        now: createdAt,
-      });
+      const effective = crossAuthor
+        ? "disputed"
+        : computeEffectiveStatus(node, {
+          latestReceipt: null,
+          triggerFired: this.#triggerFired(node),
+          now: createdAt,
+        });
 
       db.prepare(
         `INSERT INTO nodes (cid, node_id, node_type, version_seq, supersedes_cid, author_public_key,
@@ -658,9 +663,18 @@ export class SqliteNodeStore implements NodeStore {
     db.prepare("UPDATE nodes SET head = 0 WHERE node_id = ?").run(nodeId);
     db.prepare(
       `UPDATE nodes SET head = 1 WHERE node_id = ? AND cid NOT IN (
-         SELECT supersedes_cid FROM nodes WHERE node_id = ? AND supersedes_cid IS NOT NULL
+         SELECT n2.supersedes_cid
+         FROM nodes n1
+         JOIN nodes n2 ON n2.supersedes_cid = n1.cid
+         WHERE n1.node_id = ? AND n2.node_id = ?
+           AND n2.author_public_key = n1.author_public_key
+       ) AND cid NOT IN (
+         SELECT n3.cid
+         FROM nodes n3
+         JOIN nodes t ON n3.supersedes_cid = t.cid
+         WHERE n3.node_id = ? AND n3.author_public_key != t.author_public_key
        )`,
-    ).run(nodeId, nodeId);
+    ).run(nodeId, nodeId, nodeId, nodeId);
   }
 
   #indexTriggers(node: Node, cid: string): void {
