@@ -427,6 +427,28 @@ Deno.test("GET /llms.txt documents the query surface", async () => {
   await Deno.remove(dir, { recursive: true });
 });
 
+Deno.test("sort enum and llms.txt list minus-prefixed sort values", async () => {
+  const { handler, dir } = await makeServer();
+  const spec = await (await req(handler, "/openapi.json")).json();
+  const sortParam = spec.paths["/nodes"].get.parameters.find(
+    (p: { name: string }) => p.name === "sort",
+  );
+  assert(
+    sortParam.schema.enum.includes("-confidence_score"),
+    "openapi sort enum must list -confidence_score",
+  );
+  assert(
+    sortParam.schema.enum.includes("confidence_score"),
+    "openapi sort enum must list confidence_score",
+  );
+  const text = await (await req(handler, "/llms.txt")).text();
+  assert(
+    text.includes("-confidence_score"),
+    "llms.txt must list the minus-prefixed sort value",
+  );
+  await Deno.remove(dir, { recursive: true });
+});
+
 Deno.test("GET /nodes/{cid}/verifications returns receipts", async () => {
   const { handler, recipeCid, dir } = await makeServer();
   const res = await req(handler, `/nodes/${recipeCid}/verifications`);

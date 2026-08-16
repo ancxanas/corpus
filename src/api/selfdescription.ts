@@ -16,6 +16,9 @@ export const QUERY_FILTERS = [
 ] as const;
 
 export const QUERY_SORTABLE = [
+  "-created_at",
+  "-last_verified",
+  "-confidence_score",
   "created_at",
   "last_verified",
   "confidence_score",
