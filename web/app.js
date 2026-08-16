@@ -425,12 +425,18 @@ function skeletonRows() {
 
 function renderPagination() {
   if (state.total <= state.limit) {
+    pagination.innerHTML = "";
     pagination.hidden = true;
     return;
   }
   pagination.hidden = false;
-  const pageNum = Math.floor(state.offset / state.limit) + 1;
+  const pageNum = Math.min(
+    Math.floor(state.offset / state.limit) + 1,
+    Math.max(1, Math.ceil(state.total / state.limit)),
+  );
   const pageCount = Math.max(1, Math.ceil(state.total / state.limit));
+  const lastOffset = Math.max(0, Math.ceil(state.total / state.limit) - 1) *
+    state.limit;
   pagination.innerHTML = `
     <button class="btn" id="prev" ${
     state.prev ? "" : "disabled"
@@ -442,11 +448,13 @@ function renderPagination() {
     state.next ? "" : "disabled"
   }>Next →</button>`;
   pagination.querySelector("#prev")?.addEventListener("click", () => {
-    state.offset -= state.limit;
+    if (!state.prev) return;
+    state.offset = Math.max(0, state.offset - state.limit);
     renderBrowse();
   });
   pagination.querySelector("#next")?.addEventListener("click", () => {
-    state.offset += state.limit;
+    if (!state.next) return;
+    state.offset = Math.min(lastOffset, state.offset + state.limit);
     renderBrowse();
   });
 }
@@ -519,6 +527,8 @@ async function renderBrowse() {
     renderPagination();
   } catch (err) {
     if (token !== renderToken) return;
+    pagination.innerHTML = "";
+    pagination.hidden = true;
     const listEl = view.querySelector(".node-list");
     if (listEl) {
       listEl.innerHTML = `
@@ -759,6 +769,7 @@ function renderReceiptsPanel(receipts) {
 
 async function renderDetail(cid) {
   const token = ++renderToken;
+  pagination.innerHTML = "";
   pagination.hidden = true;
   view.innerHTML = `
     <a class="back" href="#/">${icon("back")} Browse</a>

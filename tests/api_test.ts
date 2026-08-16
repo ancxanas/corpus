@@ -960,16 +960,50 @@ Deno.test("invalid filter node_type value is rejected", async () => {
   await Deno.remove(dir, { recursive: true });
 });
 
-Deno.test("pagination offset at and over the total yields empty data", async () => {
+Deno.test("pagination offset past the total clamps to the last page", async () => {
   const { handler, dir } = await makeServer();
   const atTotal = await req(handler, "/nodes?page[limit]=25&page[offset]=2");
   const atBody = await atTotal.json();
-  assertEquals(atBody.data.length, 0);
+  assertEquals(atBody.data.length, 2);
   assertEquals(atBody.meta.total, 2);
+  assertEquals(atBody.links.next, null);
+  assertEquals(atBody.links.prev, null);
   const overTotal = await req(handler, "/nodes?page[offset]=100");
   const overBody = await overTotal.json();
-  assertEquals(overBody.data.length, 0);
+  assertEquals(overBody.data.length, 2);
   assertEquals(overBody.meta.total, 2);
+  assertEquals(overBody.links.next, null);
+  assertEquals(overBody.links.prev, null);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("page[limit]=0 clamps to 1 item", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, "/nodes?page[limit]=0");
+  const body = await res.json();
+  assertEquals(body.data.length, 1);
+  assertEquals(
+    decodeURIComponent(body.links.next),
+    "http://127.0.0.1/nodes?page[limit]=0&page[offset]=1",
+  );
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("pagination offset past the end on a paged collection clamps and links correctly", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, "/nodes?page[limit]=1&page[offset]=50");
+  const body = await res.json();
+  assertEquals(body.data.length, 1);
+  assertEquals(body.meta.total, 2);
+  assertEquals(
+    decodeURIComponent(body.links.last),
+    "http://127.0.0.1/nodes?page[limit]=1&page[offset]=1",
+  );
+  assertEquals(body.links.next, null);
+  assertEquals(
+    decodeURIComponent(body.links.prev),
+    "http://127.0.0.1/nodes?page[limit]=1&page[offset]=0",
+  );
   await Deno.remove(dir, { recursive: true });
 });
 

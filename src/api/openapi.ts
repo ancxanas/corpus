@@ -462,14 +462,16 @@ function queryParameters(): Json[] {
       name: "page[limit]",
       in: "query",
       required: false,
-      description: "Maximum number of resources to return. Defaults to 25.",
+      description:
+        "Maximum number of resources to return. Defaults to 25; clamps to 1-100.",
       schema: { type: "integer", minimum: 1, maximum: QUERY_PAGE_LIMIT_MAX },
     },
     {
       name: "page[offset]",
       in: "query",
       required: false,
-      description: "Number of resources to skip. Defaults to 0.",
+      description:
+        "Number of resources to skip. Defaults to 0; offsets past the last page clamp to it.",
       schema: { type: "integer", minimum: 0 },
     },
     {
@@ -510,14 +512,16 @@ function receiptParameters(): Json[] {
       name: "page[limit]",
       in: "query",
       required: false,
-      description: "Maximum number of receipts to return. Defaults to 25.",
+      description:
+        "Maximum number of receipts to return. Defaults to 25; clamps to 1-100.",
       schema: { type: "integer", minimum: 1, maximum: QUERY_PAGE_LIMIT_MAX },
     },
     {
       name: "page[offset]",
       in: "query",
       required: false,
-      description: "Number of receipts to skip. Defaults to 0.",
+      description:
+        "Number of receipts to skip. Defaults to 0; offsets past the last page clamp to it.",
       schema: { type: "integer", minimum: 0 },
     },
   ];

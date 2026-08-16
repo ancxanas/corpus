@@ -98,6 +98,22 @@ export interface CreateAppOptions {
 
 const UI_INDEX = "index.html";
 
+function parsePageLimit(raw: string | null): number {
+  if (raw === null || raw.trim() === "") {
+    return 25;
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.min(Math.max(Math.floor(n), 1), 100) : 25;
+}
+
+function parsePageOffset(raw: string | null): number {
+  if (raw === null || raw.trim() === "") {
+    return 0;
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
 function mimeFor(path: string): string {
   const ext = path.split(".").pop() ?? "";
   switch (ext) {
@@ -828,11 +844,8 @@ export function createApp(
     baseUrl: string,
   ): Response {
     const params = new URL(request.url).searchParams;
-    const limit = Math.min(
-      Math.max(Number(params.get("page[limit]")) || 25, 1),
-      100,
-    );
-    const offset = Math.max(Number(params.get("page[offset]")) || 0, 0);
+    const limit = parsePageLimit(params.get("page[limit]"));
+    const offset = parsePageOffset(params.get("page[offset]"));
     const ascending = !(params.get("sort") ?? "-timestamp").startsWith("-");
     const all = store.getAllReceipts();
     const sorted = [...all].sort(
@@ -841,7 +854,9 @@ export function createApp(
     if (!ascending) {
       sorted.reverse();
     }
-    const page = sorted.slice(offset, offset + limit);
+    const lastOffset = Math.max(0, Math.ceil(all.length / limit) - 1) * limit;
+    const clamped = Math.min(offset, lastOffset);
+    const page = sorted.slice(clamped, clamped + limit);
     const resources = page.map((r) => serializeReceiptWith(r, baseUrl));
 
     const pageLinks: Record<string, string> = {
@@ -850,7 +865,6 @@ export function createApp(
       next: "",
       prev: "",
     };
-    const lastOffset = Math.max(0, Math.ceil(all.length / limit) - 1) * limit;
     const setParams = (o: number) => {
       const requestUrl = new URL(request.url);
       const p = new URL(requestUrl.pathname, baseUrl);
@@ -860,10 +874,10 @@ export function createApp(
     };
     pageLinks.first = setParams(0);
     pageLinks.last = setParams(lastOffset);
-    pageLinks.next = offset + limit < all.length
-      ? setParams(offset + limit)
+    pageLinks.next = clamped + limit < all.length
+      ? setParams(clamped + limit)
       : "";
-    pageLinks.prev = offset > 0 ? setParams(Math.max(0, offset - limit)) : "";
+    pageLinks.prev = clamped > 0 ? setParams(Math.max(0, clamped - limit)) : "";
 
     return jsonResponse(
       document(resources, {
@@ -928,17 +942,19 @@ export function createApp(
       }
       filter.node_type = t;
     }
-    const limit = Math.min(
-      Math.max(Number(params.get("page[limit]")) || 25, 1),
-      100,
-    );
-    const offset = Math.max(Number(params.get("page[offset]")) || 0, 0);
+    const limit = parsePageLimit(params.get("page[limit]"));
+    const offset = parsePageOffset(params.get("page[offset]"));
     const sort = (params.get("sort") ?? "-created_at").replace(/^-/, "");
     const include = (params.get("include") ?? "").split(",").map((s) =>
       s.trim()
     ).filter(Boolean);
 
-    const result = await store.search({ filter, sort, limit, offset });
+    let result = await store.search({ filter, sort, limit, offset });
+    const lastOffset = Math.max(0, Math.ceil(result.total / limit) - 1) * limit;
+    const clamped = Math.min(offset, lastOffset);
+    if (clamped !== offset) {
+      result = await store.search({ filter, sort, limit, offset: clamped });
+    }
     const resources = [];
     for (const n of result.data) {
       const relationships = await extractRelationships(
@@ -1006,7 +1022,6 @@ export function createApp(
       next: "",
       prev: "",
     };
-    const lastOffset = Math.max(0, Math.ceil(result.total / limit) - 1) * limit;
     const setParams = (o: number) => {
       const requestUrl = new URL(request.url);
       const p = new URL(requestUrl.pathname, baseUrl);
@@ -1016,10 +1031,10 @@ export function createApp(
     };
     pageLinks.first = setParams(0);
     pageLinks.last = setParams(lastOffset);
-    pageLinks.next = offset + limit < result.total
-      ? setParams(offset + limit)
+    pageLinks.next = clamped + limit < result.total
+      ? setParams(clamped + limit)
       : "";
-    pageLinks.prev = offset > 0 ? setParams(Math.max(0, offset - limit)) : "";
+    pageLinks.prev = clamped > 0 ? setParams(Math.max(0, clamped - limit)) : "";
 
     return jsonResponse(
       document(resources, {
