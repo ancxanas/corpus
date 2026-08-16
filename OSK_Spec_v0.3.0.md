@@ -92,7 +92,14 @@ Every node MUST contain the following top-level fields:
   `versioning_scheme` MUST be one of `semver`, `calver`, `year`, `custom`. It
   defaults to `semver`. For `custom`, the index MUST define and document the
   evaluator.
-- `osk.attribution.public_key` — Ed25519 public key in hex format.
+- `osk.attribution.public_key` — Ed25519 public key in hex format. It is the
+  author of record. The lineage key is the signing key: versions that share a
+  `public_key` belong to one lineage, and only that key may advance the head.
+  When an operator signs an agent's output, the operator key is the author of
+  record and the agent identity is metadata (see `author_type` and
+  `agent_context`). A corpus of nodes signed by ephemeral agent-held keys
+  fragments into many lineages; consumers then select the best-verified node for
+  a problem at query time.
 - `osk.attribution.signature` — Ed25519 signature of the canonical serialization
   defined in 8.1.
 

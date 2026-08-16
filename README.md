@@ -17,7 +17,9 @@ JSON:API server. The system follows the OSK Specification v0.3.0 in
 - Version chains with `supersedes_cid`, fork detection (`disputed`), and
   confidence scoring from independent verification receipts. Only the author of
   a version may advance its lineage; a supersession by another author is
-  quarantined as `disputed` and never becomes the head.
+  quarantined as `disputed` and never becomes the head. The lineage key is the
+  signing key: an operator-signed agent output makes the operator the author of
+  record, so agent runs under one operator converge in one lineage.
 - Deprecation triggers evaluated against pinned versions.
 - Index rebuild from stored blocks.
 - CLI for key generation, node authoring, verification, search, and rebuild.

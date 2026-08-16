@@ -33,7 +33,9 @@ const DESCRIPTION =
   "fixes, and verification receipts. Nodes are immutable, Ed25519-signed, " +
   "and versioned via supersedes_cid. Only the author of a version may " +
   "advance its lineage; a supersession by another author is quarantined " +
-  "as disputed and never becomes the head.";
+  "as disputed and never becomes the head. The lineage key is the signing " +
+  "key: an operator-signed agent output makes the operator the author of " +
+  "record, so agent runs under one operator converge in one lineage.";
 
 const QUERY_EXAMPLE =
   "GET /problems?search=heap%20exhaustion&filter[severity]=critical" +
@@ -57,7 +59,11 @@ const TRUST_MODEL =
   "replayed receipts or the latest receipt failed; it never sets " +
   "effective_status. disputed means a failed receipt, an authorship " +
   "conflict, or a quarantined supersession: a version that cites a node " +
-  "by a different author never becomes the head. disputed and deprecated " +
+  "by a different author never becomes the head. The lineage key is the " +
+  "signing key. When an operator signs an agent's output, the operator key " +
+  "is the author of record and the agent identity is metadata, so agent " +
+  "runs under one operator share a lineage and can supersede each other. " +
+  "disputed and deprecated " +
   "nodes stay queryable. confidence_score " +
   "is per-solution: it reflects the receipts on one recipe, not its linked " +
   "problem. Problems are never verified directly, so a problem score stays " +
