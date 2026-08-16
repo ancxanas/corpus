@@ -168,13 +168,19 @@ Key endpoints:
   `page[offset]`
 - `POST /agent/query` — one-call task endpoint (plain `application/json`): match
   problems, rank solutions, pick the best; each solution carries an `evidence`
-  object with the strongest replayed receipt and its measurements
+  object with the strongest replayed receipt, its `replayed_by` mechanism, and
+  its measurements
 - `POST /nodes` — create a signed Problem, Recipe, or Guide node
 - `GET /nodes/{cid}` — fetch a node; add `?include=<relationship>` for compound
   documents
 - `GET /nodes/{cid}/{relationship}` — `solutions`, `prerequisites`, or `target`
 - `GET /nodes/{cid}/verifications` — verification receipts for a node (each with
   `test_suite.measurements` and verifier `agent_context` when provided)
+
+`replayed_by` names the replay mechanism. In the default demo (`trusted-stub`),
+receipts are operator vouchers for a claimed suite, not executions; confidence
+built on them is unverified until `CORPUS_REPLAY=sandbox` executes them.
+
 - `GET /nodes/by-node-id/{node_id}` — head version of a node; `.../versions` for
   all versions
 - `POST /verifications` — submit a signed verification receipt

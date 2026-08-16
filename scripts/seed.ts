@@ -1250,7 +1250,7 @@ const recipeJsonStream = recipeNode(ID(35), author.publicKeyHex, {
     language: "typescript",
     framework: "deno",
     body:
-      "const encoder = new TextEncoder();\nconst chunks = new ReadableStream({\n  start(controller) {\n    controller.enqueue(encoder.encode('{\"items\":['));\n    for (const item of items) {\n      controller.enqueue(encoder.encode(JSON.stringify(item) + ','));\n    }\n    controller.enqueue(encoder.encode(']}'));\n    controller.close();\n  },\n});\nreturn new Response(chunks, { headers: { 'content-type': 'application/json' } });",
+      "const encoder = new TextEncoder();\nconst chunks = new ReadableStream({\n  start(controller) {\n    controller.enqueue(encoder.encode('{\"items\":['));\n    let first = true;\n    for (const item of items) {\n      const prefix = first ? '' : ',';\n      controller.enqueue(encoder.encode(prefix + JSON.stringify(item)));\n      first = false;\n    }\n    controller.enqueue(encoder.encode(']}'));\n    controller.close();\n  },\n});\nreturn new Response(chunks, { headers: { 'content-type': 'application/json' } });",
   },
   explanation:
     "Emit the response body as a stream and serialize each item as it is produced, so resident memory tracks the current item, not the full result set.",
@@ -1267,8 +1267,9 @@ const recipeJsonStream = recipeNode(ID(35), author.publicKeyHex, {
     {
       title: "Open a ReadableStream over the rows",
       body:
-        "Feed the encoder one chunk per item and flush as you go instead of building one big string.",
-      code: "controller.enqueue(encoder.encode(JSON.stringify(item) + ','));",
+        "Feed the encoder one chunk per item, separated by commas, and flush as you go instead of building one big string.",
+      code:
+        "controller.enqueue(encoder.encode((first ? '' : ',') + JSON.stringify(item)));",
     },
     {
       title: "Close the array and return the stream",
@@ -1282,7 +1283,7 @@ const recipeJsonStream = recipeNode(ID(35), author.publicKeyHex, {
     {
       condition: "the stream ends mid-array",
       warning:
-        "trailing commas and partial frames can break strict JSON parsers; write the envelope carefully.",
+        "an aborted response leaves a partial JSON body; let clients retry and keep the envelope frames well-formed.",
     },
   ],
   tags: ["json", "streaming", "memory", "http"],
@@ -1295,7 +1296,7 @@ const recipeJsonStream = recipeNode(ID(35), author.publicKeyHex, {
 const recipeJsonPage = recipeNode(ID(36), author.publicKeyHex, {
   title: "Paginate large responses server-side",
   summary:
-    "Return fixed-size pages with a next cursor so memory scales with page size, not result size.",
+    "Return fixed-size pages with a next cursor so each response payload stays bounded.",
   code: {
     language: "typescript",
     framework: "deno",
@@ -1308,12 +1309,15 @@ const recipeJsonPage = recipeNode(ID(36), author.publicKeyHex, {
     {
       description: "Clients accept paged data and follow the next cursor.",
     },
+    {
+      description:
+        "The example slices an in-memory array, so it only bounds the payload; see caveats for flat memory.",
+    },
   ],
   steps: [
     {
       title: "Slice the result set to a page",
-      body:
-        "Fetch only the current window of rows and serialize just that window.",
+      body: "Take the current window of rows and serialize just that window.",
       code: "const page = items.slice(offset, offset + PAGE_SIZE);",
     },
     {
@@ -1323,12 +1327,17 @@ const recipeJsonPage = recipeNode(ID(36), author.publicKeyHex, {
     },
   ],
   verification:
-    "Any requested page serializes in constant memory regardless of total result size.",
+    "Any requested page serializes as a bounded payload; peak memory still tracks the materialized result set.",
   caveats: [
     {
       condition: "rows change between requests",
       warning:
         "offset paging can skip or duplicate rows; prefer keyset pagination on a stable column.",
+    },
+    {
+      condition: "the result set is already fully materialized",
+      warning:
+        "slicing a loaded array does not reduce peak memory; page at the storage layer (keyset or LIMIT OFFSET) so only one window is held at a time.",
     },
   ],
   tags: ["json", "pagination", "memory", "http"],
@@ -2316,7 +2325,7 @@ const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
           language: "python",
           framework: "flask",
           body:
-            "import time\n\nwhile True:\n    log('rss_' + str(int(time.time() * 1000)))\n    time.sleep(5)",
+            "import time\n\ndef rss_kb():\n    with open('/proc/self/status') as f:\n        for line in f:\n            if line.startswith('VmRSS:'):\n                return int(line.split()[1])\n\nwhile True:\n    log(f'rss_kb={rss_kb()}')\n    time.sleep(5)",
         },
         example:
           "A worker that 'leaks' under a 1-hour load shows a flat 90MB line once you sample every 5s; a real retention bug climbs steadily to 400MB+.",

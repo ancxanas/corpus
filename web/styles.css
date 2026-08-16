@@ -1207,6 +1207,20 @@ table.cases .fail {
   font-weight: 600;
 }
 
+.trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 8px;
+  border: 1px solid var(--border-muted);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 /* ---------- States ---------- */
 
 .skeleton-row {

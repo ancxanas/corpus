@@ -791,6 +791,13 @@ function copyPanel(resource) {
     </div>`;
 }
 
+function trustLabel(replayedBy) {
+  if (replayedBy === "sandbox") return "executed in sandbox";
+  if (replayedBy === "trusted-stub") return "operator-vouched, not executed";
+  if (replayedBy === "stub") return "replay stub, not executed";
+  return replayedBy;
+}
+
 function renderReceiptsPanel(receipts) {
   if (!receipts.length) return "";
   const items = receipts.map((r) => {
@@ -799,10 +806,18 @@ function renderReceiptsPanel(receipts) {
     const total = suite.total ?? 0;
     const pct = total > 0 ? Math.round(((suite.passed ?? 0) / total) * 100) : 0;
     const context = r.attributes?.agent_context;
+    const replay = r.attributes?.replayed_by;
     const measurements = Array.isArray(suite.measurements)
       ? suite.measurements
       : [];
     const extra = [
+      replay
+        ? `<div class="receipt-extra"><span class="trust-badge">${
+          esc(
+            trustLabel(replay),
+          )
+        }</span></div>`
+        : "",
       measurements.length > 0
         ? `<div class="receipt-extra">${
           measurements.map((m) => `
@@ -1225,6 +1240,15 @@ function renderVerification(verification) {
   }"><span class="dot"></span>${esc(suite.passed)} passed · ${
     esc(suite.failed)
   } failed</span></dd>
+      ${
+    verification.replayed_by
+      ? `<dt>Replay</dt><dd><span class="trust-badge">${
+        esc(
+          trustLabel(verification.replayed_by),
+        )
+      }</span></dd>`
+      : ""
+  }
       <dt>Timestamp</dt><dd>${esc(fmtDateTime(verification.timestamp))}</dd>
       <dt>Valid until</dt><dd>${
     esc(fmtDateTime(verification.valid_until))

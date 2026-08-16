@@ -63,7 +63,11 @@ const TRUST_MODEL =
   "recipe. This raises the cost of a Sybil attack: new keys cannot pump a " +
   "score. Each receipt exposes its replay status, environment, and verifier " +
   "reputation, so you can recompute trust client-side from the signed, " +
-  "content-addressed receipts and apply your own policy. Receipts may " +
+  "content-addressed receipts and apply your own policy. replayed_by names " +
+  "the replay mechanism: trusted-stub receipts are operator vouchers for a " +
+  "claimed suite, not executions; sandbox receipts are executed in an " +
+  "isolated environment. Do not treat operator-vouched receipts as executed " +
+  "verification. Receipts may " +
   "also carry measured results (e.g. latency, memory, throughput) and the " +
   "agent_context of the verifier: the model, context window use, tool " +
   "count, and reasoning chain length at verification time. Treat those as " +
@@ -134,8 +138,11 @@ export function buildLlmsText(baseUrl: string): string {
     "   confidence and status, and sets meta.best to the single best",
     "   solution to apply first.",
     "   Each solution carries an evidence object: the strongest replayed",
-    "   receipt, including measured results (latency, memory, throughput)",
-    "   and the verifier key. Quote evidence.measurements as proof.",
+    "   receipt, its replayed_by mechanism, measured results (latency, memory,",
+    "   throughput) and the verifier key. Read evidence.replayed_by before",
+    "   quoting evidence.measurements: trusted-stub receipts are operator",
+    "   vouchers for a claimed suite, not executions, so do not treat their",
+    "   measurements as tested.",
     '2. Add `"language": "python"` or `"framework": "deno"` to narrow',
     "   solutions to one stack. By default all solutions come back, each",
     "   labeled with its language and framework.",
@@ -191,6 +198,14 @@ export function buildLlmsText(baseUrl: string): string {
     "receipts via POST /verifications.",
     "",
     "## Trust model",
+    "",
+    "Signatures prove who published a node, not that the content is correct.",
+    "Confidence counts replayed receipts weighted by verifier reputation.",
+    "Receipts carry server_replayed and replayed_by. replayed_by=trusted-stub",
+    "means an operator vouched for the claimed suite; replayed_by=sandbox",
+    "means the suite executed in an isolated environment. Treat operator-vouched",
+    "receipts as unverified until sandbox executes them. The full trust model",
+    "is in the GET / entrypoint meta.",
     "",
     TRUST_MODEL_SHORT,
     "",

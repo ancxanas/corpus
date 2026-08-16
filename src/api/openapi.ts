@@ -147,6 +147,11 @@ const ENVELOPE_SCHEMAS: Json = {
       total: { type: "integer" },
       passed: { type: "integer" },
       failed: { type: "integer" },
+      replayed_by: {
+        type: ["string", "null"],
+        description:
+          "The replay mechanism that produced the receipt. trusted-stub is an operator voucher for a claimed suite, not an execution; sandbox receipts are executed in an isolated environment.",
+      },
       measurements: {
         type: ["array", "null"],
         items: { $ref: "#/components/schemas/Measurement" },

@@ -113,6 +113,7 @@ interface EvidenceView {
   total: number;
   passed: number;
   failed: number;
+  replayed_by: string | null;
   measurements: Measurement[] | null;
 }
 
@@ -137,6 +138,7 @@ function evidenceOf(receipt: IndexedVerification): EvidenceView {
     total: receipt.total,
     passed: receipt.passed,
     failed: receipt.failed,
+    replayed_by: receipt.replayed_by,
     measurements: receipt.measurements,
   };
 }

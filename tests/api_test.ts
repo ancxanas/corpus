@@ -420,6 +420,10 @@ Deno.test("GET /llms.txt documents the query surface", async () => {
     text.includes("evidence"),
     "llms.txt must document solution evidence",
   );
+  assert(
+    text.includes("trusted-stub") && text.includes("not executions"),
+    "llms.txt must warn that operator-vouched receipts are not executions",
+  );
   await Deno.remove(dir, { recursive: true });
 });
 
@@ -1571,6 +1575,7 @@ Deno.test("POST /agent/query returns a matched problem with ranked solutions", a
   assertEquals(solution.evidence.total, 2);
   assertEquals(solution.evidence.failed, 0);
   assertEquals(solution.evidence.environment_hash, "a".repeat(64));
+  assertEquals(solution.evidence.replayed_by, "trusted-stub");
   assertEquals(solution.evidence.measurements, null);
   assertEquals(solution.links.self, `http://127.0.0.1/nodes/${recipeCid}`);
   assertEquals(
