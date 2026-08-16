@@ -242,6 +242,18 @@ const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
     db.exec(SCHEMA_V6);
     backfillSearchIndex(db);
   },
+  (db) => {
+    const columns = db.prepare("PRAGMA table_info(verifications)").all() as {
+      name: string;
+    }[];
+    const names = new Set(columns.map((c) => c.name));
+    if (!names.has("measurements")) {
+      db.exec("ALTER TABLE verifications ADD COLUMN measurements TEXT;");
+    }
+    if (!names.has("agent_context")) {
+      db.exec("ALTER TABLE verifications ADD COLUMN agent_context TEXT;");
+    }
+  },
 ];
 
 export function migrate(db: DatabaseSync): void {

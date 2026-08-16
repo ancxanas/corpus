@@ -101,6 +101,58 @@ const ENVELOPE_SCHEMAS: Json = {
     required: ["version"],
     properties: { version: { type: "string" } },
   },
+  Measurement: {
+    type: "object",
+    required: ["name", "value"],
+    properties: {
+      name: { type: "string" },
+      value: { type: "number" },
+      unit: { type: "string" },
+      description: { type: "string" },
+    },
+  },
+  AgentContext: {
+    type: "object",
+    required: [
+      "model",
+      "context_window_size",
+      "context_window_used",
+      "tool_count",
+      "reasoning_chain_length",
+    ],
+    properties: {
+      model: { type: "string" },
+      context_window_size: { type: "integer" },
+      context_window_used: { type: "integer" },
+      tool_count: { type: "integer" },
+      reasoning_chain_length: { type: "integer" },
+    },
+  },
+  Evidence: {
+    type: "object",
+    required: [
+      "receipt_cid",
+      "verifier_key",
+      "verified_at",
+      "environment_hash",
+      "total",
+      "passed",
+      "failed",
+    ],
+    properties: {
+      receipt_cid: { type: "string" },
+      verifier_key: { $ref: "#/components/schemas/ed25519PublicKey" },
+      verified_at: { $ref: "#/components/schemas/iso8601" },
+      environment_hash: { type: "string" },
+      total: { type: "integer" },
+      passed: { type: "integer" },
+      failed: { type: "integer" },
+      measurements: {
+        type: ["array", "null"],
+        items: { $ref: "#/components/schemas/Measurement" },
+      },
+    },
+  },
   ResourceIdentifier: {
     type: "object",
     required: ["type", "id"],
@@ -201,8 +253,13 @@ const ENVELOPE_SCHEMAS: Json = {
               total: { type: "integer" },
               passed: { type: "integer" },
               failed: { type: "integer" },
+              measurements: {
+                type: "array",
+                items: { $ref: "#/components/schemas/Measurement" },
+              },
             },
           },
+          agent_context: { $ref: "#/components/schemas/AgentContext" },
           environment: {
             type: "object",
             properties: {
@@ -373,6 +430,10 @@ const ENVELOPE_SCHEMAS: Json = {
       status: { enum: EFFECTIVE_STATUS },
       last_verified: { type: "string", format: "date-time" },
       applies_to: { type: ["string", "null"] },
+      evidence: {
+        type: ["object", "null"],
+        $ref: "#/components/schemas/Evidence",
+      },
       explanation: { type: "string" },
       steps: { type: "array" },
       code: { type: "object" },

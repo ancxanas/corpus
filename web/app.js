@@ -798,6 +798,32 @@ function renderReceiptsPanel(receipts) {
     const failed = suite.failed ?? 0;
     const total = suite.total ?? 0;
     const pct = total > 0 ? Math.round(((suite.passed ?? 0) / total) * 100) : 0;
+    const context = r.attributes?.agent_context;
+    const measurements = Array.isArray(suite.measurements)
+      ? suite.measurements
+      : [];
+    const extra = [
+      measurements.length > 0
+        ? `<div class="receipt-extra">${
+          measurements.map((m) => `
+            <span class="measure-chip" title="${esc(m.description ?? m.name)}">
+              <b>${esc(m.name)}</b> ${m.value}${
+            m.unit ? ` ${esc(m.unit)}` : ""
+          }</span>`).join("")
+        }</div>`
+        : "",
+      context
+        ? `<div class="receipt-extra mono">verified by ${
+          esc(context.model)
+        } · ` +
+          `context ${esc(context.context_window_used)}/${
+            esc(context.context_window_size)
+          } · ` +
+          `${esc(context.tool_count)} tools · chain ${
+            esc(context.reasoning_chain_length)
+          }</div>`
+        : "",
+    ].join("");
     return `
       <div class="receipt">
         <div class="receipt-main">
@@ -814,6 +840,7 @@ function renderReceiptsPanel(receipts) {
       esc(suite.passed)
     }/${esc(total)}</div>
         </div>
+        ${extra}
       </div>`;
   }).join("");
   return `
@@ -1160,6 +1187,30 @@ function renderVerification(verification) {
   const execution = verification.execution ?? {};
   const suite = execution.test_suite ?? {};
   const cases = suite.cases ?? [];
+  const measurements = suite.measurements ?? [];
+  const context = verification.agent_context;
+
+  const contextRows = context
+    ? `
+    <dt>Verified by</dt><dd>${esc(context.model)}</dd>
+    <dt>Context use</dt><dd class="mono">${esc(context.context_window_used)}/${
+      esc(context.context_window_size)
+    }</dd>
+    <dt>Tools / reasoning</dt><dd class="mono">${
+      esc(context.tool_count)
+    } tools · chain ${esc(context.reasoning_chain_length)}</dd>`
+    : "";
+
+  const measurementSection = measurements.length > 0
+    ? `
+    <h2>Measurements</h2>
+    <div class="receipt-extra">${
+      measurements.map((m) => `
+      <span class="measure-chip" title="${esc(m.description ?? m.name)}">
+        <b>${esc(m.name)}</b> ${m.value}${m.unit ? ` ${esc(m.unit)}` : ""}
+      </span>`).join("")
+    }</div>`
+    : "";
 
   return `
     <dl class="rows">
@@ -1175,8 +1226,11 @@ function renderVerification(verification) {
     esc(suite.failed)
   } failed</span></dd>
       <dt>Timestamp</dt><dd>${esc(fmtDateTime(verification.timestamp))}</dd>
-      <dt>Valid until</dt><dd>${esc(fmtDateTime(verification.valid_until))}</dd>
+      <dt>Valid until</dt><dd>${
+    esc(fmtDateTime(verification.valid_until))
+  }</dd>${contextRows}
     </dl>
+    ${measurementSection}
     <h2>Test suite</h2>
     <table class="cases">
       <thead><tr><th>Case</th><th>Result</th><th>Expected</th><th>Actual</th></tr></thead>

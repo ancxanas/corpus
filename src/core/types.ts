@@ -48,6 +48,21 @@ export interface Step {
   code?: string;
 }
 
+export interface AgentContext {
+  model: string;
+  context_window_size: number;
+  context_window_used: number;
+  tool_count: number;
+  reasoning_chain_length: number;
+}
+
+export interface Measurement {
+  name: string;
+  value: number;
+  unit?: string;
+  description?: string;
+}
+
 export interface ProblemPayload {
   problem: {
     title: string;
@@ -69,13 +84,7 @@ export interface ProblemPayload {
     environment: {
       runtime: { type: string; versions: string[] };
       framework: { name: string; version: string };
-      agent_context?: {
-        model: string;
-        context_window_size: number;
-        context_window_used: number;
-        tool_count: number;
-        reasoning_chain_length: number;
-      };
+      agent_context?: AgentContext;
     };
     solutions?: Array<{
       node: IpldLink;
@@ -166,6 +175,7 @@ export interface VerificationPayload {
         total: number;
         passed: number;
         failed: number;
+        measurements?: Measurement[];
         cases: Array<{
           name: string;
           input_cid?: IpldLink;
@@ -177,6 +187,7 @@ export interface VerificationPayload {
     };
     timestamp: string;
     valid_until?: string;
+    agent_context?: AgentContext;
   };
 }
 

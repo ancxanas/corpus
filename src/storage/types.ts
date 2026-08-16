@@ -1,4 +1,10 @@
-import type { EffectiveStatus, Node, NodeType } from "../core/types.ts";
+import type {
+  AgentContext,
+  EffectiveStatus,
+  Measurement,
+  Node,
+  NodeType,
+} from "../core/types.ts";
 
 export class InvalidNodeError extends Error {
   constructor(message: string) {
@@ -39,6 +45,8 @@ export interface IndexedVerification {
   total: number;
   passed: number;
   failed: number;
+  measurements: Measurement[] | null;
+  agent_context: AgentContext | null;
   server_replayed: boolean;
   replayed_at: string | null;
   replayed_by: string | null;

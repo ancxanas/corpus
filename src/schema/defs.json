@@ -26,6 +26,35 @@
       "type": "string",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
     },
+    "agentContext": {
+      "type": "object",
+      "required": [
+        "model",
+        "context_window_size",
+        "context_window_used",
+        "tool_count",
+        "reasoning_chain_length"
+      ],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "context_window_size": { "type": "integer", "minimum": 0 },
+        "context_window_used": { "type": "integer", "minimum": 0 },
+        "tool_count": { "type": "integer", "minimum": 0 },
+        "reasoning_chain_length": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "measurement": {
+      "type": "object",
+      "required": ["name", "value"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "value": { "type": "number" },
+        "unit": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
     "attribution": {
       "type": "object",
       "required": ["author_type", "public_key"],

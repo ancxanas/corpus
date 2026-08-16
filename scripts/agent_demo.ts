@@ -253,6 +253,20 @@ async function verifySolution(winner: RankedSolution): Promise<void> {
             total: 3,
             passed: 3,
             failed: 0,
+            measurements: [
+              {
+                name: "peak_memory",
+                value: 44,
+                unit: "MB",
+                description: "Peak resident memory after the fix",
+              },
+              {
+                name: "p99_latency",
+                value: 41,
+                unit: "ms",
+                description: "99th percentile response latency",
+              },
+            ],
             cases: [
               {
                 name: "symptom resolved",
@@ -276,6 +290,13 @@ async function verifySolution(winner: RankedSolution): Promise<void> {
           },
         },
         timestamp: new Date().toISOString(),
+        agent_context: {
+          model: "gpt-5",
+          context_window_size: 400_000,
+          context_window_used: 168_000,
+          tool_count: 8,
+          reasoning_chain_length: 14,
+        },
       },
     },
   };
@@ -326,6 +347,11 @@ interface AgentQueryResult {
       confidence?: number;
       language?: string;
       framework?: string | null;
+      evidence?: {
+        passed?: number;
+        total?: number;
+        measurements?: Array<{ name?: string; value?: number; unit?: string }>;
+      } | null;
     }>;
   }>;
 }
@@ -354,11 +380,20 @@ async function oneCallQuery(): Promise<void> {
         `(${shortCid(p.cid ?? "")})`,
     );
     for (const s of entry.solutions ?? []) {
+      const ev = s.evidence;
+      const meas = ev?.measurements?.length
+        ? " · " +
+          ev.measurements.map((m) => `${m.name}=${m.value}${m.unit ?? ""}`)
+            .join(", ")
+        : "";
       warn(
         `  ${confidencePct(s.confidence).padStart(4)}  ${s.title ?? s.cid}  ` +
           `[${s.language ?? "?"}${s.framework ? `, ${s.framework}` : ""}]  ${
             shortCid(s.cid ?? "")
-          }`,
+          }` +
+          (ev
+            ? `\n       evidence ${ev.passed ?? 0}/${ev.total ?? 0}${meas}`
+            : ""),
       );
     }
   }

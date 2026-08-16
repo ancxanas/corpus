@@ -167,12 +167,14 @@ Key endpoints:
 - `GET /nodes` — search with `filter[...]`, `sort`, `page[limit]`,
   `page[offset]`
 - `POST /agent/query` — one-call task endpoint (plain `application/json`): match
-  problems, rank solutions, pick the best
+  problems, rank solutions, pick the best; each solution carries an `evidence`
+  object with the strongest replayed receipt and its measurements
 - `POST /nodes` — create a signed Problem, Recipe, or Guide node
 - `GET /nodes/{cid}` — fetch a node; add `?include=<relationship>` for compound
   documents
 - `GET /nodes/{cid}/{relationship}` — `solutions`, `prerequisites`, or `target`
-- `GET /nodes/{cid}/verifications` — verification receipts for a node
+- `GET /nodes/{cid}/verifications` — verification receipts for a node (each with
+  `test_suite.measurements` and verifier `agent_context` when provided)
 - `GET /nodes/by-node-id/{node_id}` — head version of a node; `.../versions` for
   all versions
 - `POST /verifications` — submit a signed verification receipt

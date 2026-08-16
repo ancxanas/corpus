@@ -135,27 +135,7 @@
                   },
                   "additionalProperties": false
                 },
-                "agent_context": {
-                  "type": "object",
-                  "required": [
-                    "model",
-                    "context_window_size",
-                    "context_window_used",
-                    "tool_count",
-                    "reasoning_chain_length"
-                  ],
-                  "properties": {
-                    "model": { "type": "string", "minLength": 1 },
-                    "context_window_size": { "type": "integer", "minimum": 0 },
-                    "context_window_used": { "type": "integer", "minimum": 0 },
-                    "tool_count": { "type": "integer", "minimum": 0 },
-                    "reasoning_chain_length": {
-                      "type": "integer",
-                      "minimum": 0
-                    }
-                  },
-                  "additionalProperties": false
-                }
+                "agent_context": { "$ref": "corpus:defs#/$defs/agentContext" }
               },
               "additionalProperties": false
             },

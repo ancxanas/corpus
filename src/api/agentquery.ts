@@ -1,6 +1,10 @@
 import type { NodeStore } from "../storage/node_store.ts";
-import type { IndexedNode } from "../storage/types.ts";
-import type { ProblemPayload, RecipePayload } from "../core/types.ts";
+import type { IndexedNode, IndexedVerification } from "../storage/types.ts";
+import type {
+  Measurement,
+  ProblemPayload,
+  RecipePayload,
+} from "../core/types.ts";
 import { isProblem } from "../nodetypes/problem.ts";
 import { isRecipe } from "../nodetypes/recipe.ts";
 import { linkedCidsOf } from "./relationships.ts";
@@ -98,6 +102,57 @@ interface SolutionView {
   node: IndexedNode;
   recipe: RecipePayload["recipe"];
   applies_to: string | null;
+  evidence: EvidenceView | null;
+}
+
+interface EvidenceView {
+  receipt_cid: string;
+  verifier_key: string;
+  verified_at: string;
+  environment_hash: string;
+  total: number;
+  passed: number;
+  failed: number;
+  measurements: Measurement[] | null;
+}
+
+function compareReceipts(
+  a: IndexedVerification,
+  b: IndexedVerification,
+): number {
+  const ratio = (r: IndexedVerification): number =>
+    r.total > 0 ? r.passed / r.total : 0;
+  if (ratio(a) !== ratio(b)) {
+    return ratio(b) - ratio(a);
+  }
+  return Date.parse(b.timestamp) - Date.parse(a.timestamp);
+}
+
+function evidenceOf(receipt: IndexedVerification): EvidenceView {
+  return {
+    receipt_cid: receipt.receipt_cid,
+    verifier_key: receipt.public_key,
+    verified_at: receipt.timestamp,
+    environment_hash: receipt.environment_hash,
+    total: receipt.total,
+    passed: receipt.passed,
+    failed: receipt.failed,
+    measurements: receipt.measurements,
+  };
+}
+
+async function loadEvidence(
+  store: NodeStore,
+  solutionCid: string,
+): Promise<EvidenceView | null> {
+  const receipts = await store.getReceiptsFor(solutionCid);
+  if (receipts.length === 0) {
+    return null;
+  }
+  const replayed = receipts.filter((r) => r.server_replayed);
+  const pool = replayed.length > 0 ? replayed : receipts;
+  const best = [...pool].sort(compareReceipts)[0]!;
+  return evidenceOf(best);
 }
 
 async function loadSolutions(
@@ -134,6 +189,7 @@ async function loadSolutions(
       node: target,
       recipe,
       applies_to: appliesByCid.get(cid) ?? null,
+      evidence: await loadEvidence(store, target.cid),
     });
   }
   return out;
@@ -152,6 +208,7 @@ function serializeSolution(view: SolutionView, baseUrl: string): unknown {
     status: view.node.effective_status,
     last_verified: view.node.last_verified,
     applies_to: view.applies_to,
+    evidence: view.evidence,
     explanation: recipe.explanation,
     steps: recipe.steps ?? [],
     code: recipe.code,

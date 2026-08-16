@@ -352,6 +352,8 @@ function receipt(overrides: Partial<IndexedVerification>): IndexedVerification {
     total: 2,
     passed: 2,
     failed: 0,
+    measurements: null,
+    agent_context: null,
     server_replayed: false,
     replayed_at: null,
     replayed_by: null,

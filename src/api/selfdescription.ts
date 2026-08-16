@@ -43,7 +43,9 @@ const HOW_TO_WRITE =
   "Ed25519 over the canonical DAG-JSON bytes of {osk, payload} with " +
   "attribution.signature omitted. attribution.public_key must match the " +
   "signing key. Validate against /schemas/{node_type} before submitting. " +
-  "Submit verification receipts via POST /verifications.";
+  "Submit verification receipts via POST /verifications. Verification " +
+  "receipts may add test_suite.measurements (name, value, unit) and an " +
+  "agent_context block (model, context window use, tool count).";
 
 const TRUST_MODEL =
   "effective_status is a computed verdict. confidence_score 0.0 means no " +
@@ -61,7 +63,11 @@ const TRUST_MODEL =
   "recipe. This raises the cost of a Sybil attack: new keys cannot pump a " +
   "score. Each receipt exposes its replay status, environment, and verifier " +
   "reputation, so you can recompute trust client-side from the signed, " +
-  "content-addressed receipts and apply your own policy.";
+  "content-addressed receipts and apply your own policy. Receipts may " +
+  "also carry measured results (e.g. latency, memory, throughput) and the " +
+  "agent_context of the verifier: the model, context window use, tool " +
+  "count, and reasoning chain length at verification time. Treat those as " +
+  "metadata about the proof, not the proof itself.";
 
 const TRUST_MODEL_SHORT =
   "Confidence reflects replayed verification receipts, weighted by " +
@@ -127,6 +133,9 @@ export function buildLlmsText(baseUrl: string): string {
     "   The response lists matching problems, ranks their solutions by",
     "   confidence and status, and sets meta.best to the single best",
     "   solution to apply first.",
+    "   Each solution carries an evidence object: the strongest replayed",
+    "   receipt, including measured results (latency, memory, throughput)",
+    "   and the verifier key. Quote evidence.measurements as proof.",
     '2. Add `"language": "python"` or `"framework": "deno"` to narrow',
     "   solutions to one stack. By default all solutions come back, each",
     "   labeled with its language and framework.",

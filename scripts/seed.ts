@@ -224,6 +224,75 @@ function verificationNode(
   };
 }
 
+const CTX_VERIFIER = {
+  model: "claude-sonnet-4",
+  context_window_size: 200_000,
+  context_window_used: 82_000,
+  tool_count: 12,
+  reasoning_chain_length: 18,
+};
+
+const CTX_REVIEWER = {
+  model: "claude-opus-4",
+  context_window_size: 200_000,
+  context_window_used: 145_000,
+  tool_count: 9,
+  reasoning_chain_length: 26,
+};
+
+const CTX_PEER = {
+  model: "gpt-5",
+  context_window_size: 400_000,
+  context_window_used: 210_000,
+  tool_count: 15,
+  reasoning_chain_length: 22,
+};
+
+const MEAS_STREAMING = [
+  {
+    name: "peak_memory",
+    value: 48,
+    unit: "MB",
+    description: "Peak resident memory during a 150MB upload",
+  },
+  {
+    name: "throughput",
+    value: 182_000,
+    unit: "rows/s",
+    description: "CSV rows parsed per second",
+  },
+];
+
+const MEAS_PAGINATION = [
+  {
+    name: "p99_latency",
+    value: 38,
+    unit: "ms",
+    description: "99th percentile response latency",
+  },
+  {
+    name: "memory_delta",
+    value: 4.2,
+    unit: "MB",
+    description: "Heap growth across 10,000 pages",
+  },
+];
+
+const MEAS_POOL = [
+  {
+    name: "peak_heap",
+    value: 22,
+    unit: "MB",
+    description: "Peak heap across the soak run",
+  },
+  {
+    name: "leak_rate",
+    value: 0,
+    unit: "KB/s",
+    description: "Steady-state leak after warmup",
+  },
+];
+
 async function stored(cid: string): Promise<boolean> {
   const res = await fetch(`${url}/nodes/${cid}`, {
     headers: { Accept: "application/vnd.api+json" },
@@ -1342,6 +1411,21 @@ const pJson = await ingest(
 
 const vCsv = verificationNode(ID(24), verifier.publicKeyHex, pCrash, rCsv, {
   timestamp: V_CSV,
+  execution: {
+    playground: "sandbox-den",
+    environment_hash: ENV_A,
+    test_suite: {
+      total: 2,
+      passed: 2,
+      failed: 0,
+      measurements: MEAS_STREAMING,
+      cases: [
+        { name: "small", expected: "ok", actual: "ok", result: "pass" },
+        { name: "large", expected: "ok", actual: "ok", result: "pass" },
+      ],
+    },
+  },
+  agent_context: CTX_VERIFIER,
 });
 const vConfig = verificationNode(
   ID(25),
@@ -1363,10 +1447,26 @@ const vConfig = verificationNode(
         ],
       },
     },
+    agent_context: CTX_VERIFIER,
   },
 );
 const vMem = verificationNode(ID(26), verifier.publicKeyHex, pLeakV2, rMem, {
   timestamp: V_MEM,
+  execution: {
+    playground: "sandbox-den",
+    environment_hash: ENV_A,
+    test_suite: {
+      total: 2,
+      passed: 2,
+      failed: 0,
+      measurements: MEAS_POOL,
+      cases: [
+        { name: "small", expected: "ok", actual: "ok", result: "pass" },
+        { name: "large", expected: "ok", actual: "ok", result: "pass" },
+      ],
+    },
+  },
+  agent_context: CTX_VERIFIER,
 });
 const vMemReview = verificationNode(
   ID(27),
@@ -1382,17 +1482,20 @@ const vMemReview = verificationNode(
         total: 2,
         passed: 2,
         failed: 0,
+        measurements: MEAS_POOL,
         cases: [
           { name: "small", expected: "ok", actual: "ok", result: "pass" },
           { name: "large", expected: "ok", actual: "ok", result: "pass" },
         ],
       },
     },
+    agent_context: CTX_REVIEWER,
   },
 );
 const vTz = verificationNode(ID(28), verifier.publicKeyHex, pTz, rTz, {
   timestamp: STALE_VERIFIED_AT,
   valid_until: STALE_VALID_UNTIL,
+  agent_context: CTX_VERIFIER,
 });
 const vRetries = verificationNode(
   ID(29),
@@ -1506,12 +1609,14 @@ const vMem3 = verificationNode(ID(33), peer.publicKeyHex, pLeakV2, rMem, {
       total: 2,
       passed: 2,
       failed: 0,
+      measurements: MEAS_POOL,
       cases: [
         { name: "small", expected: "ok", actual: "ok", result: "pass" },
         { name: "large", expected: "ok", actual: "ok", result: "pass" },
       ],
     },
   },
+  agent_context: CTX_PEER,
 });
 const vCsvPeer = verificationNode(ID(34), peer.publicKeyHex, pCrash, rCsv, {
   timestamp: V_CSV_PEER,
@@ -1522,12 +1627,14 @@ const vCsvPeer = verificationNode(ID(34), peer.publicKeyHex, pCrash, rCsv, {
       total: 2,
       passed: 2,
       failed: 0,
+      measurements: MEAS_STREAMING,
       cases: [
         { name: "small", expected: "ok", actual: "ok", result: "pass" },
         { name: "large", expected: "ok", actual: "ok", result: "pass" },
       ],
     },
   },
+  agent_context: CTX_PEER,
 });
 
 const vCsvCid = await computeCid(signNode(vCsv, verifier.secretKeyHex));
@@ -1554,6 +1661,21 @@ const vJsonA = verificationNode(
   rJsonStream,
   {
     timestamp: V_JSON_A,
+    execution: {
+      playground: "sandbox-den",
+      environment_hash: ENV_A,
+      test_suite: {
+        total: 2,
+        passed: 2,
+        failed: 0,
+        measurements: MEAS_STREAMING,
+        cases: [
+          { name: "small", expected: "ok", actual: "ok", result: "pass" },
+          { name: "large", expected: "ok", actual: "ok", result: "pass" },
+        ],
+      },
+    },
+    agent_context: CTX_VERIFIER,
   },
 );
 const vJsonB = verificationNode(
@@ -1563,6 +1685,21 @@ const vJsonB = verificationNode(
   rJsonPage,
   {
     timestamp: V_JSON_B,
+    execution: {
+      playground: "sandbox-den",
+      environment_hash: ENV_A,
+      test_suite: {
+        total: 2,
+        passed: 2,
+        failed: 0,
+        measurements: MEAS_PAGINATION,
+        cases: [
+          { name: "small", expected: "ok", actual: "ok", result: "pass" },
+          { name: "large", expected: "ok", actual: "ok", result: "pass" },
+        ],
+      },
+    },
+    agent_context: CTX_VERIFIER,
   },
 );
 const vJsonB2 = verificationNode(
@@ -1579,12 +1716,14 @@ const vJsonB2 = verificationNode(
         total: 2,
         passed: 2,
         failed: 0,
+        measurements: MEAS_PAGINATION,
         cases: [
           { name: "small", expected: "ok", actual: "ok", result: "pass" },
           { name: "large", expected: "ok", actual: "ok", result: "pass" },
         ],
       },
     },
+    agent_context: CTX_REVIEWER,
   },
 );
 await ingestVerification(vJsonA, verifier.secretKeyHex);

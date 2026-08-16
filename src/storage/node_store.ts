@@ -98,10 +98,30 @@ function rowToIndexedVerification(
     total: row.total as number,
     passed: row.passed as number,
     failed: row.failed as number,
+    measurements: parseJsonOrNull(row.measurements),
+    agent_context: parseJsonOrNull(row.agent_context),
     server_replayed: (row.server_replayed as number) === 1,
     replayed_at: row.replayed_at as string | null,
     replayed_by: row.replayed_by as string | null,
   };
+}
+
+function parseJsonOrNull<T>(value: unknown): T | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  try {
+    return JSON.parse(value as string) as T;
+  } catch {
+    return null;
+  }
+}
+
+function serializeJsonOrNull(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return JSON.stringify(value);
 }
 
 function rowToIndexedNode(row: Record<string, unknown>): IndexedNode {
@@ -297,8 +317,8 @@ export class SqliteNodeStore implements NodeStore {
       db.prepare(
         `INSERT INTO verifications (receipt_cid, problem_cid, solution_cid, environment_hash,
            public_key, timestamp, valid_until, total, passed, failed,
-           server_replayed, replayed_at, replayed_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           measurements, agent_context, server_replayed, replayed_at, replayed_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         cid,
         problemCid,
@@ -310,6 +330,8 @@ export class SqliteNodeStore implements NodeStore {
         verification.execution.test_suite.total,
         verification.execution.test_suite.passed,
         verification.execution.test_suite.failed,
+        serializeJsonOrNull(verification.execution.test_suite.measurements),
+        serializeJsonOrNull(verification.agent_context),
         replay.server_replayed ? 1 : 0,
         replay.replayed_at,
         replay.replayed_by,

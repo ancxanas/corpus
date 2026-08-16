@@ -246,6 +246,61 @@ Deno.test("verification total != passed+failed fails", async () => {
   );
 });
 
+Deno.test("verification with measurements and agent_context passes", async () => {
+  const node = verificationNode();
+  node.payload.verification.execution.test_suite.measurements = [
+    { name: "peak_memory", value: 48, unit: "MB" },
+    { name: "throughput", value: 182_000, unit: "rows/s" },
+  ];
+  node.payload.verification.agent_context = {
+    model: "claude-sonnet-4",
+    context_window_size: 200_000,
+    context_window_used: 82_000,
+    tool_count: 12,
+    reasoning_chain_length: 18,
+  };
+  assertEquals(await validateNode(node), []);
+});
+
+Deno.test("verification measurement without value fails", async () => {
+  const node = verificationNode();
+  node.payload.verification.execution.test_suite.measurements = [
+    { name: "peak_memory" },
+  ] as never;
+  const issues = await validateNode(node);
+  assertEquals(
+    issues.some((i) => i.pointer.includes("measurements")),
+    true,
+  );
+});
+
+Deno.test("verification agent_context missing model fails", async () => {
+  const node = verificationNode();
+  node.payload.verification.agent_context = {
+    context_window_size: 200_000,
+    context_window_used: 82_000,
+    tool_count: 12,
+    reasoning_chain_length: 18,
+  } as never;
+  const issues = await validateNode(node);
+  assertEquals(
+    issues.some((i) => i.pointer.includes("agent_context")),
+    true,
+  );
+});
+
+Deno.test("problem with agent_context passes", async () => {
+  const node = baseNode();
+  node.payload.problem.environment.agent_context = {
+    model: "claude-sonnet-4",
+    context_window_size: 200_000,
+    context_window_used: 82_000,
+    tool_count: 12,
+    reasoning_chain_length: 18,
+  };
+  assertEquals(await validateNode(node), []);
+});
+
 Deno.test("verification total != cases.length fails", async () => {
   const node = verificationNode();
   node.payload.verification.execution.test_suite.total = 0;

@@ -416,6 +416,10 @@ Deno.test("GET /llms.txt documents the query surface", async () => {
     text.includes("/agent/query"),
     "llms.txt must document the agent query endpoint",
   );
+  assert(
+    text.includes("evidence"),
+    "llms.txt must document solution evidence",
+  );
   await Deno.remove(dir, { recursive: true });
 });
 
@@ -1305,6 +1309,72 @@ Deno.test("receipt resource exposes replay status and verifier reputation", asyn
   await Deno.remove(dir, { recursive: true });
 });
 
+Deno.test("receipt resource exposes measurements and agent_context", async () => {
+  const { handler, verifierKey, problemCid, recipeCid, dir } =
+    await makeServer();
+  const receipt = signed(
+    verificationNode(
+      verifierKey.publicKeyHex,
+      problemCid,
+      recipeCid,
+      "a".repeat(64),
+      {
+        execution: {
+          playground: "sandbox-den",
+          environment_hash: "a".repeat(64),
+          test_suite: {
+            total: 2,
+            passed: 2,
+            failed: 0,
+            measurements: [
+              { name: "peak_memory", value: 48, unit: "MB" },
+              { name: "throughput", value: 182_000, unit: "rows/s" },
+            ],
+            cases: [
+              { name: "small", expected: "ok", actual: "ok", result: "pass" },
+              { name: "large", expected: "ok", actual: "ok", result: "pass" },
+            ],
+          },
+        },
+        agent_context: {
+          model: "claude-sonnet-4",
+          context_window_size: 200_000,
+          context_window_used: 82_000,
+          tool_count: 12,
+          reasoning_chain_length: 18,
+        },
+      },
+    ),
+    verifierKey.secretKeyHex,
+  );
+  const created = await req(
+    handler,
+    "/verifications",
+    postNode("verifications", receipt),
+  );
+  const body = await created.json();
+  assertEquals(created.status, 201);
+  assertEquals(body.data.attributes.test_suite.measurements[0], {
+    name: "peak_memory",
+    value: 48,
+    unit: "MB",
+  });
+  assertEquals(body.data.attributes.agent_context.model, "claude-sonnet-4");
+  assertEquals(body.data.attributes.agent_context.tool_count, 12);
+  const fetched = await req(handler, `/verifications/${body.data.id}`);
+  const fetchedBody = await fetched.json();
+  assertEquals(fetched.status, 200);
+  assertEquals(
+    fetchedBody.data.attributes.test_suite.measurements.length,
+    2,
+  );
+  assertEquals(
+    fetchedBody.data.attributes.agent_context.reasoning_chain_length,
+    18,
+  );
+  await Deno.remove(dir, { recursive: true });
+});
+
 Deno.test("POST /verifications rate-limits a key", async () => {
   const dir = tempDir();
   const index = new SqliteNodeStore(`${dir}/index.db`);
@@ -1465,7 +1535,8 @@ async function queryPost(
 }
 
 Deno.test("POST /agent/query returns a matched problem with ranked solutions", async () => {
-  const { handler, problemCid, recipeCid, dir } = await makeServer();
+  const { handler, problemCid, recipeCid, verifierKey, dir } =
+    await makeServer();
   const res = await queryPost(handler, { query: "recursion" });
   const body = await res.json();
   assertEquals(res.status, 200);
@@ -1495,6 +1566,12 @@ Deno.test("POST /agent/query returns a matched problem with ranked solutions", a
   assertEquals(solution.confidence, 0.5);
   assertEquals(solution.status, "active");
   assertEquals(solution.applies_to, null);
+  assertEquals(solution.evidence.verifier_key, verifierKey.publicKeyHex);
+  assertEquals(solution.evidence.passed, 2);
+  assertEquals(solution.evidence.total, 2);
+  assertEquals(solution.evidence.failed, 0);
+  assertEquals(solution.evidence.environment_hash, "a".repeat(64));
+  assertEquals(solution.evidence.measurements, null);
   assertEquals(solution.links.self, `http://127.0.0.1/nodes/${recipeCid}`);
   assertEquals(
     solution.links.receipts,

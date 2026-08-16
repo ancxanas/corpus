@@ -176,6 +176,15 @@ function serializeReceipt(
     replayed_at: receipt.replayed_at,
     replayed_by: receipt.replayed_by,
   };
+  if (receipt.measurements) {
+    attributes.test_suite = {
+      ...(attributes.test_suite as Record<string, unknown>),
+      measurements: receipt.measurements,
+    };
+  }
+  if (receipt.agent_context) {
+    attributes.agent_context = receipt.agent_context;
+  }
   if (provenance.env) {
     attributes.environment = {
       playground: provenance.env.playground,
