@@ -20,7 +20,7 @@ const USAGE: Record<string, string> = {
     "usage: corpus verify --problem CID --solution CID --key KEY --env-hash HASH --suite FILE [--playground NAME]",
   get: "usage: corpus get --cid CID",
   search:
-    "usage: corpus search [--type T] [--status S] [--severity S] [--framework F]",
+    "usage: corpus search [--type T] [--status S] [--severity S] [--framework F] [--search S] [--tag T]",
   rebuild: "usage: corpus rebuild [--data-dir DIR]",
 };
 
@@ -65,7 +65,9 @@ ${USAGE.search}
   --type T        filter by node type
   --status S      filter by effective status
   --severity S    filter by severity (problems only)
-  --framework F   filter by framework name`,
+  --framework F   filter by framework name
+  --search S      full-text keyword search
+  --tag T         filter by payload tag`,
   rebuild: `Rebuild the index from stored blocks.
 
 ${USAGE.rebuild}
@@ -285,7 +287,10 @@ async function cmdGet(flags: Flags): Promise<void> {
 
 async function cmdSearch(flags: Flags): Promise<void> {
   const params = new URLSearchParams();
-  for (const key of ["type", "status", "severity", "framework"]) {
+  if (typeof flags.search === "string") {
+    params.set("search", flags.search);
+  }
+  for (const key of ["type", "status", "severity", "framework", "tag"]) {
     const value = flags[key];
     if (typeof value === "string") {
       if (key === "type") {
@@ -303,14 +308,17 @@ async function cmdSearch(flags: Flags): Promise<void> {
         id: string;
         type: string;
         meta: { effective_status: string; confidence_score: number };
+        attributes?: { payload?: Record<string, { title?: string }> };
       }
     >;
     meta: { total: number };
   };
   console.log(`total: ${body.meta.total}`);
   for (const item of body.data) {
+    const payload = item.attributes?.payload ?? {};
+    const title = Object.values(payload)[0]?.title ?? "";
     console.log(
-      `${item.type}  ${item.id}  ${item.meta.effective_status}  conf=${item.meta.confidence_score}`,
+      `${item.type}  ${item.id}  ${title}  ${item.meta.effective_status}  conf=${item.meta.confidence_score}`,
     );
   }
 }

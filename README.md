@@ -96,6 +96,47 @@ tabs with counts, live title search (`/` or `Cmd/Ctrl-K` to focus), article
 layout for detail pages, per-recipe verification receipts, and version-chain
 navigation in the sidebar. Open `http://localhost:8000/ui/` to browse it.
 
+## Agent walkthrough
+
+The corpus self-describes for agents. Read `GET /llms.txt` or
+`GET /openapi.json` first, then query. A worked agent loop against the seeded
+data:
+
+```sh
+# discover the surface
+curl http://localhost:8000/llms.txt
+
+# find a problem from its symptoms (full-text keyword search)
+curl 'http://localhost:8000/problems?search=heap%20exhaustion&filter[effective_status]=active'
+
+# read the problem with its solution recipes inlined
+curl 'http://localhost:8000/nodes/<cid>?include=solutions'
+
+# the UI-side confidence ranking is just a sort
+curl 'http://localhost:8000/recipes?search=json&sort=-confidence_score'
+```
+
+`deno task demo` runs this loop as a transcript against a running server: it
+discovers the corpus, searches for "heap exhaustion", reads the matching problem
+with its solutions, ranks the recipes by confidence score, prints the best fix,
+and optionally posts a verification receipt:
+
+```sh
+deno task start          # in one terminal
+deno task demo           # read-only agent loop
+deno task demo -- --verify   # also post a receipt with data/peer-key.json
+```
+
+`deno task demo` respects `CORPUS_BASE_URL`, `DEMO_QUERY`, `DEMO_KEY`, and
+`DEMO_REGISTRY`.
+
+The CLI mirrors the same discovery path:
+
+```sh
+deno task cli -- search --search heap --tag json
+deno task cli -- get --cid <cid>
+```
+
 ## HTTP API
 
 A machine-readable OpenAPI 3.1 document is served at `GET /openapi.json`. The
