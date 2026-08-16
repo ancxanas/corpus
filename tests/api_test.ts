@@ -147,6 +147,46 @@ Deno.test("collection include returns linked resources", async () => {
   await Deno.remove(dir, { recursive: true });
 });
 
+Deno.test("single node include=solutions returns the linked recipe", async () => {
+  const { handler, problemCid, recipeCid, dir } = await makeServer();
+  const res = await req(handler, `/nodes/${problemCid}?include=solutions`);
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  const ids = (body.included ?? []).map((i: { id: string }) => i.id);
+  assert(ids.includes(recipeCid), "included must contain the linked recipe");
+  assertEquals(body.data.relationships.solutions.data[0].id, recipeCid);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("recipe problems relationship resolves linked problems", async () => {
+  const { handler, problemCid, recipeCid, dir } = await makeServer();
+  const res = await req(handler, `/nodes/${recipeCid}/problems`);
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  const ids = (body.data ?? []).map((r: { id: string }) => r.id);
+  assert(ids.includes(problemCid), "reverse lookup must find the problem");
+  const type = (body.data ?? []).find((r: { id: string }) =>
+    r.id === problemCid
+  );
+  assertEquals(type.type, "problems");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("recipe problems relationship is empty without links", async () => {
+  const { handler, ingest, authorKey, dir } = await makeServer();
+  const unlinked = signed(
+    recipeNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
+  const unlinkedCid = await cidOf(unlinked);
+  await ingest.ingestNode(unlinked);
+  const res = await req(handler, `/nodes/${unlinkedCid}/problems`);
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  assertEquals(body.data.length, 0);
+  await Deno.remove(dir, { recursive: true });
+});
+
 Deno.test("collection include rejects an unsupported path with 400", async () => {
   const { handler, dir } = await makeServer();
   const res = await req(handler, "/problems?include=not_a_relationship");

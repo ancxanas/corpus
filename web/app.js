@@ -625,6 +625,45 @@ async function fetchVersions(nodeId) {
   }
 }
 
+async function fetchSolvedProblems(cid) {
+  try {
+    const body = await api(`/nodes/${encodeURIComponent(cid)}/problems`);
+    return body.data ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function renderSolvedProblemsPanel(problems) {
+  if (!problems.length) return "";
+  const items = problems.map((p) => {
+    const problem = p.attributes?.payload?.problem ?? {};
+    return `
+      <div class="rel-group">
+        <div class="rel-name">Problem</div>
+        <ul>
+          <li class="rel-solution">
+            ${nodeLink(p.id, problem.title ?? shortCid(p.id))}
+            <div class="rel-solution-sub">${
+      p.meta?.effective_status ? pill(p.meta.effective_status) : ""
+    }${
+      problem.severity
+        ? `<span class="pill neutral"><span class="dot"></span>${
+          esc(problem.severity)
+        }</span>`
+        : ""
+    }</div>
+          </li>
+        </ul>
+      </div>`;
+  }).join("");
+  return `
+    <div class="side-panel">
+      <h3>Solved problems</h3>
+      ${items}
+    </div>`;
+}
+
 function metadataPanel(resource, lifecycle, attribution, versions, currentCid) {
   const meta = resource.meta ?? {};
   const osk = resource.attributes?.osk ?? {};
@@ -686,7 +725,7 @@ function metadataPanel(resource, lifecycle, attribution, versions, currentCid) {
     </div>`;
 }
 
-function relationshipsPanel(resource) {
+function relationshipsPanel(resource, includedById = new Map()) {
   const relationships = resource.relationships ?? {};
   const groups = Object.entries(relationships).filter(([, rel]) =>
     (rel.data ?? []).length > 0
@@ -701,10 +740,33 @@ function relationshipsPanel(resource) {
           <div class="rel-name">${esc(name)}</div>
           <ul>
             ${
-      (rel.data ?? []).map((r) => `
-              <li>${
-        nodeLink(r.id, `${esc(r.type)} ${esc(shortCid(r.id))}`)
-      }</li>`).join("")
+      (rel.data ?? []).map((r) => {
+        const inc = includedById.get(r.id);
+        if (inc && inc.attributes?.payload?.recipe) {
+          const title = inc.attributes.payload.recipe.title;
+          const c = inc.meta?.confidence_score;
+          return `
+              <li class="rel-solution">
+                ${nodeLink(r.id, title)}
+                <div class="rel-solution-sub">${
+            inc.meta?.effective_status ? pill(inc.meta.effective_status) : ""
+          }${
+            c == null
+              ? ""
+              : `<span class="confidence ${confidenceClass(c)}">${
+                esc(confidencePct(c))
+              }</span>`
+          }</div>${
+            r.meta?.applies_to
+              ? `<div class="rel-applies">when ${esc(r.meta.applies_to)}</div>`
+              : ""
+          }
+              </li>`;
+        }
+        return `<li>${
+          nodeLink(r.id, `${esc(r.type)} ${esc(shortCid(r.id))}`)
+        }</li>`;
+      }).join("")
     }
           </ul>
         </div>`).join("")
@@ -777,7 +839,7 @@ async function renderDetail(cid) {
 
   try {
     const body = await api(
-      `/nodes/${encodeURIComponent(cid)}?include=relationships`,
+      `/nodes/${encodeURIComponent(cid)}?include=solutions`,
     );
     if (token !== renderToken) return;
     const resource = body.data;
@@ -787,10 +849,14 @@ async function renderDetail(cid) {
     const payload = resource.attributes?.payload ?? {};
     const meta = resource.meta ?? {};
     const t = typeId(resource);
+    const includedById = new Map(
+      (body.included ?? []).map((r) => [r.id, r]),
+    );
 
-    const [receipts, versions] = await Promise.all([
+    const [receipts, versions, solvedProblems] = await Promise.all([
       payload.recipe ? fetchReceipts(resource.id) : Promise.resolve([]),
       fetchVersions(osk.node_id),
+      payload.recipe ? fetchSolvedProblems(resource.id) : Promise.resolve([]),
     ]);
     if (token !== renderToken) return;
 
@@ -839,7 +905,8 @@ async function renderDetail(cid) {
           ${
       metadataPanel(resource, lifecycle, attribution, versions, resource.id)
     }
-          ${relationshipsPanel(resource)}
+          ${relationshipsPanel(resource, includedById)}
+          ${renderSolvedProblemsPanel(solvedProblems)}
           ${copyPanel(resource)}
         </aside>
       </div>`;

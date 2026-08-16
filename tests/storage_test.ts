@@ -106,6 +106,42 @@ Deno.test("ingest problem and recipe, fetch by cid", async () => {
   await Deno.remove(env.dir, { recursive: true });
 });
 
+Deno.test("node_links tracks solutions and supports reverse lookup", async () => {
+  const env = await makeEnv();
+  const problem = signed(
+    problemNode(env.authorKey.publicKeyHex, {
+      solutionCids: [env.recipeCid],
+    }),
+    env.authorKey.secretKeyHex,
+  );
+  const problemCid = await cidOf(problem);
+  await env.ingest.ingestNode(problem);
+  assertEquals(env.index.linkedFrom(env.recipeCid), [problemCid]);
+  assertEquals(env.index.linkedFrom(env.recipeCid, "solutions"), [problemCid]);
+  assertEquals(env.index.linkedFrom(env.recipeCid, "nope"), []);
+  await Deno.remove(env.dir, { recursive: true });
+});
+
+Deno.test("rebuild recreates node_links from blocks", async () => {
+  const env = await makeEnv();
+  const problem = signed(
+    problemNode(env.authorKey.publicKeyHex, {
+      solutionCids: [env.recipeCid],
+    }),
+    env.authorKey.secretKeyHex,
+  );
+  const problemCid = await cidOf(problem);
+  await env.ingest.ingestNode(problem);
+  await env.index.reset();
+  const { rebuildIndex } = await import("../src/storage/rebuild.ts");
+  await rebuildIndex(
+    new FileBlockstore({ dir: `${env.dir}/blocks` }),
+    env.index,
+  );
+  assertEquals(env.index.linkedFrom(env.recipeCid, "solutions"), [problemCid]);
+  await Deno.remove(env.dir, { recursive: true });
+});
+
 Deno.test("recipe with one verification gets confidence 0.5", async () => {
   const env = await makeEnv();
   const receipt = signed(

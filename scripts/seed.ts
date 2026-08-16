@@ -24,6 +24,9 @@ const V_QUEUE = "2026-07-15T14:00:00.000Z";
 const V_BINARY = "2026-07-20T16:00:00.000Z";
 const V_MEM3 = "2026-07-25T09:00:00.000Z";
 const V_CSV_PEER = "2026-07-28T09:00:00.000Z";
+const V_JSON_A = "2026-08-02T08:00:00.000Z";
+const V_JSON_B = "2026-08-03T09:00:00.000Z";
+const V_JSON_B2 = "2026-08-03T14:00:00.000Z";
 
 const ENV_A = "a".repeat(64);
 const ENV_B = "b".repeat(64);
@@ -1170,6 +1173,173 @@ const pRetries = await ingest("problems", problemRetries);
 const pDeadlock = await ingest("problems", problemDeadlock);
 const pBinary = await ingest("problems", problemBinary);
 
+const recipeJsonStream = recipeNode(ID(35), author.publicKeyHex, {
+  title: "Stream JSON responses in chunks",
+  summary:
+    "Serialize large result sets incrementally so the worker never buffers the whole response.",
+  code: {
+    language: "typescript",
+    framework: "deno",
+    body:
+      "const encoder = new TextEncoder();\nconst chunks = new ReadableStream({\n  start(controller) {\n    controller.enqueue(encoder.encode('{\"items\":['));\n    for (const item of items) {\n      controller.enqueue(encoder.encode(JSON.stringify(item) + ','));\n    }\n    controller.enqueue(encoder.encode(']}'));\n    controller.close();\n  },\n});\nreturn new Response(chunks, { headers: { 'content-type': 'application/json' } });",
+  },
+  explanation:
+    "Emit the response body as a stream and serialize each item as it is produced, so resident memory tracks the current item, not the full result set.",
+  prerequisites: [
+    {
+      description: "The client can consume a streaming response body.",
+    },
+    {
+      description:
+        "The query still materializes the full row set; see caveats.",
+    },
+  ],
+  steps: [
+    {
+      title: "Open a ReadableStream over the rows",
+      body:
+        "Feed the encoder one chunk per item and flush as you go instead of building one big string.",
+      code: "controller.enqueue(encoder.encode(JSON.stringify(item) + ','));",
+    },
+    {
+      title: "Close the array and return the stream",
+      body:
+        "Finish the payload with the closing bracket and hand the readable side to the Response.",
+    },
+  ],
+  verification:
+    "A 50MB JSON response keeps the worker RSS flat while the client streams the body.",
+  caveats: [
+    {
+      condition: "the stream ends mid-array",
+      warning:
+        "trailing commas and partial frames can break strict JSON parsers; write the envelope carefully.",
+    },
+  ],
+  tags: ["json", "streaming", "memory", "http"],
+  references: [{
+    title: "MDN: ReadableStream",
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream",
+  }],
+});
+
+const recipeJsonPage = recipeNode(ID(36), author.publicKeyHex, {
+  title: "Paginate large responses server-side",
+  summary:
+    "Return fixed-size pages with a next cursor so memory scales with page size, not result size.",
+  code: {
+    language: "typescript",
+    framework: "deno",
+    body:
+      "const page = items.slice(offset, offset + PAGE_SIZE);\nconst next = offset + PAGE_SIZE < items.length\n  ? `/items?offset=${offset + PAGE_SIZE}`\n  : null;\nreturn Response.json({ data: page, next });",
+  },
+  explanation:
+    "Bound every response to a fixed page size and hand the client a cursor, so no single response ever holds the full result set.",
+  prerequisites: [
+    {
+      description: "Clients accept paged data and follow the next cursor.",
+    },
+  ],
+  steps: [
+    {
+      title: "Slice the result set to a page",
+      body:
+        "Fetch only the current window of rows and serialize just that window.",
+      code: "const page = items.slice(offset, offset + PAGE_SIZE);",
+    },
+    {
+      title: "Emit a next cursor",
+      body:
+        "Return the next offset only when more rows remain, and null on the final page.",
+    },
+  ],
+  verification:
+    "Any requested page serializes in constant memory regardless of total result size.",
+  caveats: [
+    {
+      condition: "rows change between requests",
+      warning:
+        "offset paging can skip or duplicate rows; prefer keyset pagination on a stable column.",
+    },
+  ],
+  tags: ["json", "pagination", "memory", "http"],
+  references: [{
+    title: "MDN: Response.json()",
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/Response/json",
+  }],
+});
+
+const rJsonStream = await ingest("recipes", recipeJsonStream);
+const rJsonPage = await ingest("recipes", recipeJsonPage);
+
+const pJson = await ingest(
+  "problems",
+  problemNode(ID(37), author.publicKeyHex, {
+    title: "Worker heap exhaustion on large JSON responses",
+    severity: "critical",
+    summary:
+      "A JSON endpoint serializes the entire result set into one buffer, so a large collection exhausts the worker heap and the process dies.",
+    impact:
+      "The endpoint returns 500s for every client while the worker restarts, and the incident repeats as long as result sets stay large.",
+    symptoms: [
+      {
+        type: "runtime_behavior",
+        description: "worker process dies mid-response",
+        observable: "RSS climbs to the heap limit right before the crash",
+        frequency: "intermittent",
+      },
+      {
+        type: "error_message",
+        description: "out-of-memory error in the runtime log",
+        observable: "process exits with an OOM status under load",
+        frequency: "always",
+      },
+    ],
+    reproduction: [
+      {
+        title: "Request the large collection endpoint",
+        body: "Call the endpoint that returns every row without pagination.",
+      },
+      {
+        title: "Watch RSS during the serialization",
+        body:
+          "Resident memory grows with the row count; at the heap limit the worker is killed.",
+      },
+    ],
+    diagnosis: [
+      {
+        title: "Correlate crash time with response size",
+        body:
+          "The crash only happens when the serialized payload exceeds the heap limit.",
+      },
+    ],
+    root_cause: {
+      mechanism:
+        "the handler builds one full JSON string from the entire result set before sending any bytes",
+      causal_chain: ["json", "serialization", "unbounded buffer", "oom"],
+    },
+    environment: {
+      runtime: { type: "deno", versions: ["2.x"] },
+      framework: { name: "deno", version: "2.x" },
+    },
+    solutions: [
+      {
+        node: { "/": rJsonStream },
+        applies_to: "clients can consume a streaming response body",
+      },
+      {
+        node: { "/": rJsonPage },
+        applies_to: "clients accept paged responses with a next cursor",
+      },
+    ],
+    tags: ["json", "memory", "oom", "streaming", "pagination"],
+    references: [{
+      title: "MDN: ReadableStream",
+      url: "https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream",
+    }],
+  }),
+);
+
 const vCsv = verificationNode(ID(24), verifier.publicKeyHex, pCrash, rCsv, {
   timestamp: V_CSV,
 });
@@ -1376,6 +1546,50 @@ await ingestVerification(vQueue, peer.secretKeyHex);
 await ingestVerification(vBinary, peer.secretKeyHex);
 await ingestVerification(vMem3, peer.secretKeyHex);
 await ingestVerification(vCsvPeer, peer.secretKeyHex);
+
+const vJsonA = verificationNode(
+  ID(38),
+  verifier.publicKeyHex,
+  pJson,
+  rJsonStream,
+  {
+    timestamp: V_JSON_A,
+  },
+);
+const vJsonB = verificationNode(
+  ID(39),
+  verifier.publicKeyHex,
+  pJson,
+  rJsonPage,
+  {
+    timestamp: V_JSON_B,
+  },
+);
+const vJsonB2 = verificationNode(
+  ID(40),
+  reviewer.publicKeyHex,
+  pJson,
+  rJsonPage,
+  {
+    timestamp: V_JSON_B2,
+    execution: {
+      playground: "sandbox-den",
+      environment_hash: ENV_B,
+      test_suite: {
+        total: 2,
+        passed: 2,
+        failed: 0,
+        cases: [
+          { name: "small", expected: "ok", actual: "ok", result: "pass" },
+          { name: "large", expected: "ok", actual: "ok", result: "pass" },
+        ],
+      },
+    },
+  },
+);
+await ingestVerification(vJsonA, verifier.secretKeyHex);
+await ingestVerification(vJsonB, verifier.secretKeyHex);
+await ingestVerification(vJsonB2, reviewer.secretKeyHex);
 
 const guideStreaming = guideNode(ID(16), author.publicKeyHex, {
   title: "Streaming data through a memory-constrained service",
@@ -2088,5 +2302,5 @@ await ingest("guides", guideRetries);
 await ingest("guides", guideLeaks);
 
 console.log(
-  "seed complete: 8 recipes, 9 problems, 5 guides, 11 verifications",
+  "seed complete: 10 recipes, 10 problems, 5 guides, 14 verifications",
 );

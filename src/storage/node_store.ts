@@ -63,6 +63,7 @@ export interface NodeStore {
   getReceiptsFor(solutionCid: string): Promise<IndexedVerification[]>;
   getReceipt(receiptCid: string): IndexedVerification | null;
   getAllReceipts(): IndexedVerification[];
+  linkedFrom(targetCid: string, name?: string): string[];
   keyReputation(publicKey: string): KeyReputation;
   addTrustedKeys(keys: string[]): void;
   hasVerification(cid: string): Promise<boolean>;
@@ -158,6 +159,7 @@ export class SqliteNodeStore implements NodeStore {
     this.#db.exec("DROP TABLE IF EXISTS nodes");
     this.#db.exec("DROP TABLE IF EXISTS verifications");
     this.#db.exec("DROP TABLE IF EXISTS deprecation_triggers");
+    this.#db.exec("DROP TABLE IF EXISTS node_links");
     this.#db.exec("PRAGMA user_version = 0");
     await migrate(this.#db);
   }
@@ -236,6 +238,7 @@ export class SqliteNodeStore implements NodeStore {
         ).run(nodeId);
       }
       this.#indexTriggers(node, cid);
+      this.#indexLinks(node, cid);
       db.exec("COMMIT;");
     } catch (e) {
       rollbackQuietly(db);
@@ -612,6 +615,29 @@ export class SqliteNodeStore implements NodeStore {
     for (const t of triggers) {
       stmt.run(cid, t.scope, t.versioning_scheme ?? "semver", t.condition);
     }
+  }
+
+  #indexLinks(node: Node, cid: string): void {
+    const stmt = this.#db.prepare(
+      `INSERT OR IGNORE INTO node_links (source_cid, name, target_cid)
+       VALUES (?, ?, ?)`,
+    );
+    for (const def of registry[node.osk.node_type].relationships(node)) {
+      for (const link of def.links) {
+        stmt.run(cid, def.name, link.cid);
+      }
+    }
+  }
+
+  linkedFrom(targetCid: string, name?: string): string[] {
+    const rows = name === undefined
+      ? this.#db.prepare(
+        "SELECT source_cid FROM node_links WHERE target_cid = ?",
+      ).all(targetCid)
+      : this.#db.prepare(
+        "SELECT source_cid FROM node_links WHERE name = ? AND target_cid = ?",
+      ).all(name, targetCid);
+    return (rows as { source_cid: string }[]).map((r) => r.source_cid);
   }
 
   async close(): Promise<void> {

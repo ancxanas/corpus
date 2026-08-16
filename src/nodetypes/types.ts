@@ -17,6 +17,11 @@ export interface RelationshipDef {
   links: LinkedRef[];
 }
 
+export interface ReverseRelationshipDef {
+  name: string;
+  forwardName: string;
+}
+
 export interface NodeMeta {
   severity: string | null;
   framework_name: string | null;
@@ -35,6 +40,7 @@ export interface NodeTypeModule {
   lifecycle(declared: LifecycleStatus, verified: boolean): EffectiveStatus;
   relationshipNames: string[];
   relationships(node: Node): RelationshipDef[];
+  reverseRelationships?: ReverseRelationshipDef[];
   linkedCids(node: Node, relationship: string): string[];
   crossFieldChecks(node: Node): ValidationIssue[];
 }

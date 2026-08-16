@@ -1,4 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
+import type { Node } from "../core/types.ts";
+import { registry } from "../nodetypes/registry.ts";
 
 const SCHEMA_V1 = `
 CREATE TABLE IF NOT EXISTS nodes (
@@ -70,6 +72,16 @@ CREATE INDEX IF NOT EXISTS idx_nodes_language ON nodes(language);
 CREATE INDEX IF NOT EXISTS idx_nodes_runtime_name ON nodes(runtime_name);
 `;
 
+const SCHEMA_V5 = `
+CREATE TABLE IF NOT EXISTS node_links (
+  source_cid TEXT NOT NULL,
+  name TEXT NOT NULL,
+  target_cid TEXT NOT NULL,
+  PRIMARY KEY (source_cid, name, target_cid)
+);
+CREATE INDEX IF NOT EXISTS idx_node_links_target ON node_links(target_cid);
+`;
+
 const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
   (db) => {
     db.exec(SCHEMA_V1);
@@ -82,6 +94,33 @@ const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
   },
   (db) => {
     db.exec(SCHEMA_V4);
+  },
+  (db) => {
+    db.exec(SCHEMA_V5);
+    const rows = db.prepare("SELECT cid, node_json FROM nodes").all() as {
+      cid: string;
+      node_json: string;
+    }[];
+    const stmt = db.prepare(
+      "INSERT OR IGNORE INTO node_links (source_cid, name, target_cid) VALUES (?, ?, ?)",
+    );
+    for (const row of rows) {
+      let node: Node;
+      try {
+        node = JSON.parse(row.node_json) as Node;
+      } catch {
+        continue;
+      }
+      const module = registry[node.osk.node_type];
+      if (!module) {
+        continue;
+      }
+      for (const def of module.relationships(node)) {
+        for (const link of def.links) {
+          stmt.run(row.cid, def.name, link.cid);
+        }
+      }
+    }
   },
 ];
 

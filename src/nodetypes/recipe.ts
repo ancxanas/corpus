@@ -88,6 +88,7 @@ export const recipeModule: NodeTypeModule = {
       .map((p) => ({ cid: p.node["/"], fallback: "nodes" }));
     return links.length ? [{ name: "prerequisites", links }] : [];
   },
+  reverseRelationships: [{ name: "problems", forwardName: "solutions" }],
   linkedCids(node, relationship) {
     if (!isRecipe(node) || relationship !== "prerequisites") {
       return [];

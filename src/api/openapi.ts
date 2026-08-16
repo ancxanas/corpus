@@ -624,8 +624,11 @@ function buildPaths(): Json {
           name: "relationship",
           in: "path",
           required: true,
-          description: "Relationship name: solutions, prerequisites, target.",
-          schema: { enum: ["solutions", "prerequisites", "target"] },
+          description:
+            "Relationship name: solutions, prerequisites, target, problems.",
+          schema: {
+            enum: ["solutions", "prerequisites", "target", "problems"],
+          },
         },
       ],
       get: {

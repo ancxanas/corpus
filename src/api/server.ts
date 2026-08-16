@@ -789,7 +789,11 @@ export function createApp(
         404,
       );
     }
-    const cids = linkedCidsOf(indexed.node, name);
+    const reverse = registry[indexed.node.osk.node_type].reverseRelationships
+      ?.find((r) => r.name === name);
+    const cids = reverse
+      ? store.linkedFrom(cid, reverse.forwardName)
+      : linkedCidsOf(indexed.node, name);
     const nodes = (await Promise.all(cids.map((c) => store.getNode(c)))).filter(
       (n): n is NonNullable<typeof n> => n !== null,
     );
