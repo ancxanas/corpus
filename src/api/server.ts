@@ -48,6 +48,7 @@ import {
 } from "./http.ts";
 import { buildOpenApiDocument, OPENAPI_MEDIA_TYPE } from "./openapi.ts";
 import { buildLlmsText, buildSelfDescription } from "./selfdescription.ts";
+import { matchRoute, pattern, type RouteEntry } from "./router.ts";
 
 const SPEC_COLLECTIONS = [
   "problems",
@@ -198,6 +199,117 @@ export function createApp(
   const webDir =
     (options.webDir ?? new URL("../../web/", import.meta.url).pathname)
       .replace(/\/+$/, "");
+
+  const routes: RouteEntry<string>[] = [
+    {
+      method: "GET",
+      gate: "none",
+      pattern: pattern("/openapi.json"),
+      handler: async (_request, _groups, baseUrl) => {
+        const doc = await buildOpenApiDocument(baseUrl);
+        return new Response(JSON.stringify(doc, null, 2), {
+          headers: { "Content-Type": `${OPENAPI_MEDIA_TYPE}; charset=utf-8` },
+        });
+      },
+    },
+    {
+      method: "GET",
+      gate: "none",
+      pattern: pattern("/llms.txt"),
+      handler: (_request, _groups, baseUrl) =>
+        new Response(buildLlmsText(baseUrl), {
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+        }),
+    },
+    {
+      method: "GET",
+      gate: "accept",
+      pattern: pattern("/"),
+      handler: (_request, _groups, baseUrl) =>
+        jsonResponse(entryPoint(baseUrl)),
+    },
+    {
+      method: "POST",
+      gate: "accept",
+      pattern: pattern("/nodes"),
+      handler: (request, _groups, baseUrl) => createNode(request, baseUrl),
+    },
+    {
+      method: "GET",
+      gate: "accept",
+      pattern: pattern("/nodes"),
+      handler: (request, _groups, baseUrl) => searchNodes(request, baseUrl),
+    },
+    {
+      method: "GET",
+      gate: "accept",
+      pattern: pattern("/nodes/by-node-id/:id/versions"),
+      handler: (_request, groups, baseUrl) =>
+        byNodeId(groups.id!, true, baseUrl),
+    },
+    {
+      method: "GET",
+      gate: "accept",
+      pattern: pattern("/nodes/by-node-id/:id"),
+      handler: (_request, groups, baseUrl) =>
+        byNodeId(groups.id!, false, baseUrl),
+    },
+    {
+      method: "GET",
+      gate: "accept",
+      pattern: pattern("/nodes/:cid/verifications"),
+      handler: (_request, groups, baseUrl) => getReceipts(groups.cid!, baseUrl),
+    },
+    {
+      method: "GET",
+      gate: "accept",
+      pattern: pattern("/nodes/:cid/:rel"),
+      handler: (_request, groups, baseUrl) =>
+        getRelationship(groups.cid!, groups.rel!, baseUrl),
+    },
+    {
+      method: "GET",
+      gate: "accept",
+      pattern: pattern("/nodes/:cid"),
+      handler: (request, groups, baseUrl) =>
+        getNode(request, groups.cid!, baseUrl),
+    },
+    {
+      method: "POST",
+      gate: "accept",
+      pattern: pattern("/verifications"),
+      handler: (request, _groups, baseUrl) =>
+        createVerification(request, baseUrl),
+    },
+    {
+      method: "GET",
+      gate: "accept",
+      pattern: pattern("/verifications"),
+      handler: (request, _groups, baseUrl) =>
+        getVerificationsCollection(request, baseUrl),
+    },
+    {
+      method: "GET",
+      gate: "accept",
+      pattern: pattern("/verifications/:cid"),
+      handler: (_request, groups, baseUrl) =>
+        getVerification(groups.cid!, baseUrl),
+    },
+    {
+      method: "GET",
+      gate: "accept",
+      pattern: pattern("/schemas/:type"),
+      handler: (_request, groups, _baseUrl) => getSchema(groups.type!),
+    },
+    {
+      method: "GET",
+      gate: "accept",
+      pattern: pattern("/:collection"),
+      matches: (groups) => ADVERTISED_COLLECTIONS.has(groups.collection!),
+      handler: (request, groups, baseUrl) =>
+        searchNodes(request, baseUrl, groups.collection),
+    },
+  ];
 
   function rateLimited(publicKey: string, now: number): boolean {
     const windowStart = now - 3_600_000;
@@ -391,121 +503,27 @@ export function createApp(
         return staticResponse;
       }
 
-      if (
-        segments.length === 1 && segments[0] === "openapi.json" &&
-        method === "GET"
-      ) {
-        const doc = await buildOpenApiDocument(baseUrl);
-        return new Response(JSON.stringify(doc, null, 2), {
-          headers: { "Content-Type": `${OPENAPI_MEDIA_TYPE}; charset=utf-8` },
-        });
-      }
-
-      if (
-        segments.length === 1 && segments[0] === "llms.txt" && method === "GET"
-      ) {
-        return new Response(buildLlmsText(baseUrl), {
-          headers: { "Content-Type": "text/plain; charset=utf-8" },
-        });
-      }
-
-      if (!acceptsJsonApi(request)) {
-        return notAcceptable();
-      }
-
-      if (segments.length === 0 && method === "GET") {
-        return jsonResponse(entryPoint(baseUrl));
-      }
-
-      if (
-        segments[0] === "nodes" && method === "POST" && segments.length === 1
-      ) {
-        return await createNode(request, baseUrl);
-      }
-
-      if (
-        segments[0] === "nodes" && method === "GET" && segments.length === 1
-      ) {
-        return await searchNodes(request, baseUrl);
-      }
-
-      if (
-        segments[0] === "nodes" && segments.length === 1 &&
-        method !== "GET" && method !== "POST"
-      ) {
-        return methodNotAllowed("GET, POST");
-      }
-
-      if (segments[0] === "nodes" && segments[1] === "by-node-id") {
-        if (segments.length !== 3 && segments.length !== 4) {
+      const result = matchRoute(routes, "/" + segments.join("/"), method);
+      switch (result.kind) {
+        case "handler": {
+          if (result.entry.gate === "accept" && !acceptsJsonApi(request)) {
+            return notAcceptable();
+          }
+          return await result.entry.handler(request, result.groups, baseUrl);
+        }
+        case "notAllowed": {
+          if (!acceptsJsonApi(request)) {
+            return notAcceptable();
+          }
+          return methodNotAllowed(result.allow);
+        }
+        case "notFound":
           return notFoundResponse();
+        default: {
+          const unreachable: never = result;
+          throw unreachable;
         }
-        if (method !== "GET") {
-          return methodNotAllowed("GET");
-        }
-        return await byNodeId(segments, baseUrl);
       }
-
-      if (segments[0] === "nodes" && segments.length === 2) {
-        if (method !== "GET") {
-          return methodNotAllowed("GET");
-        }
-        return await getNode(request, segments[1]!, baseUrl);
-      }
-
-      if (
-        segments[0] === "nodes" && segments.length === 3 &&
-        segments[2] === "verifications"
-      ) {
-        if (method !== "GET") {
-          return methodNotAllowed("GET");
-        }
-        return await getReceipts(segments[1]!, baseUrl);
-      }
-
-      if (segments[0] === "nodes" && segments.length === 3) {
-        if (method !== "GET") {
-          return methodNotAllowed("GET");
-        }
-        return await getRelationship(segments[1]!, segments[2]!, baseUrl);
-      }
-
-      if (segments[0] === "verifications" && method === "POST") {
-        return await createVerification(request, baseUrl);
-      }
-
-      if (
-        segments[0] === "verifications" && segments.length === 2 &&
-        method === "GET"
-      ) {
-        return await getVerification(segments[1]!, baseUrl);
-      }
-
-      if (segments[0] === "verifications" && segments.length === 1) {
-        if (method !== "GET") {
-          return methodNotAllowed("GET");
-        }
-        return await getVerificationsCollection(request, baseUrl);
-      }
-
-      if (segments.length === 1 && ADVERTISED_COLLECTIONS.has(segments[0]!)) {
-        if (method !== "GET") {
-          return methodNotAllowed("GET");
-        }
-        return await searchNodes(request, baseUrl, segments[0]);
-      }
-
-      if (
-        segments[0] === "schemas" && segments.length === 2 && method === "GET"
-      ) {
-        return await getSchema(segments[1]!);
-      }
-
-      if (segments[0] === "schemas" && segments.length === 2) {
-        return methodNotAllowed("GET");
-      }
-
-      return notFoundResponse();
     } catch (e) {
       if (e instanceof ValidationError) {
         return jsonResponse(
@@ -993,13 +1011,13 @@ export function createApp(
   }
 
   async function byNodeId(
-    segments: string[],
+    nodeId: string,
+    versions: boolean,
     baseUrl: string,
   ): Promise<Response> {
-    const nodeId = segments[2]!;
-    if (segments.length === 4 && segments[3] === "versions") {
-      const versions = await store.getVersions(nodeId);
-      if (versions.length === 0) {
+    if (versions) {
+      const versionNodes = await store.getVersions(nodeId);
+      if (versionNodes.length === 0) {
         return jsonResponse(
           errorDocument([{
             status: "404",
@@ -1009,7 +1027,7 @@ export function createApp(
           404,
         );
       }
-      const resources = versions.map((n) => serializeResource(n, baseUrl));
+      const resources = versionNodes.map((n) => serializeResource(n, baseUrl));
       return jsonResponse(
         document(resources, { baseUrl, meta: { node_id: nodeId } }),
       );
@@ -1045,10 +1063,10 @@ export function createApp(
       );
     }
     const head = heads[0]!;
-    const versions = await store.getVersions(nodeId);
+    const versionNodes = await store.getVersions(nodeId);
     const relationship = {
       related: `${baseUrl}/nodes/by-node-id/${nodeId}/versions`,
-      data: versions.map((v) =>
+      data: versionNodes.map((v) =>
         resourceIdentifier(pluralOf(v.node_type), v.cid)
       ),
     };
