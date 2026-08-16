@@ -99,20 +99,26 @@ export interface CreateAppOptions {
 
 const UI_INDEX = "index.html";
 
-function parsePageLimit(raw: string | null): number {
+function parsePageLimit(raw: string | null): number | null {
   if (raw === null || raw.trim() === "") {
     return 25;
   }
   const n = Number(raw);
-  return Number.isFinite(n) ? Math.min(Math.max(Math.floor(n), 1), 100) : 25;
+  if (!Number.isFinite(n)) {
+    return null;
+  }
+  return Math.min(Math.max(Math.floor(n), 1), 100);
 }
 
-function parsePageOffset(raw: string | null): number {
+function parsePageOffset(raw: string | null): number | null {
   if (raw === null || raw.trim() === "") {
     return 0;
   }
   const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  if (!Number.isFinite(n)) {
+    return null;
+  }
+  return n > 0 ? Math.floor(n) : 0;
 }
 
 function mimeFor(path: string): string {
@@ -876,6 +882,19 @@ export function createApp(
     const params = new URL(request.url).searchParams;
     const limit = parsePageLimit(params.get("page[limit]"));
     const offset = parsePageOffset(params.get("page[offset]"));
+    if (limit === null || offset === null) {
+      return jsonResponse(
+        errorDocument([{
+          status: "400",
+          title: "invalid page parameter",
+          detail: `page[limit] and page[offset] must be an integer.`,
+          source: {
+            parameter: limit === null ? "page[limit]" : "page[offset]",
+          },
+        }]),
+        400,
+      );
+    }
     const ascending = !(params.get("sort") ?? "-timestamp").startsWith("-");
     const all = store.getAllReceipts();
     const sorted = [...all].sort(
@@ -983,6 +1002,19 @@ export function createApp(
     }
     const limit = parsePageLimit(params.get("page[limit]"));
     const offset = parsePageOffset(params.get("page[offset]"));
+    if (limit === null || offset === null) {
+      return jsonResponse(
+        errorDocument([{
+          status: "400",
+          title: "invalid page parameter",
+          detail: `page[limit] and page[offset] must be an integer.`,
+          source: {
+            parameter: limit === null ? "page[limit]" : "page[offset]",
+          },
+        }]),
+        400,
+      );
+    }
     const sort = (params.get("sort") ?? "-created_at").replace(/^-/, "");
     const include = (params.get("include") ?? "").split(",").map((s) =>
       s.trim()

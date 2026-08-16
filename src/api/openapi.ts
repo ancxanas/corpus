@@ -671,6 +671,14 @@ function searchOperation(): Json {
     parameters: queryParameters(),
     responses: {
       "200": DOCUMENTED_RESPONSES["200"],
+      "400": {
+        description: "A page[limit] or page[offset] value is not an integer.",
+        content: {
+          "application/vnd.api+json": {
+            schema: { $ref: "#/components/schemas/ErrorDocument" },
+          },
+        },
+      },
       "406": ERROR_RESPONSES["406"],
     },
   };
@@ -918,6 +926,15 @@ function buildPaths(): Json {
         parameters: receiptParameters(),
         responses: {
           "200": DOCUMENTED_RESPONSES["200"],
+          "400": {
+            description:
+              "A page[limit] or page[offset] value is not an integer.",
+            content: {
+              "application/vnd.api+json": {
+                schema: { $ref: "#/components/schemas/ErrorDocument" },
+              },
+            },
+          },
           "406": ERROR_RESPONSES["406"],
         },
       },

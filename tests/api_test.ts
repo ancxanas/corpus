@@ -700,6 +700,36 @@ Deno.test("negative page limit is clamped", async () => {
   await Deno.remove(dir, { recursive: true });
 });
 
+Deno.test("non-numeric page[limit] is rejected with 400", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, "/nodes?page[limit]=abc");
+  const body = await res.json();
+  assertEquals(res.status, 400);
+  assertEquals(body.errors[0].status, "400");
+  assertEquals(body.errors[0].title, "invalid page parameter");
+  assertEquals(body.errors[0].source.parameter, "page[limit]");
+  const verifications = await req(handler, "/verifications?page[limit]=abc");
+  const verificationsBody = await verifications.json();
+  assertEquals(verifications.status, 400);
+  assertEquals(verificationsBody.errors[0].title, "invalid page parameter");
+  const valid = await req(handler, "/nodes?page[limit]=1");
+  const validBody = await valid.json();
+  assertEquals(valid.status, 200);
+  assertEquals(validBody.data.length, 1);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("non-numeric page[offset] is rejected with 400", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, "/nodes?page[offset]=xyz");
+  const body = await res.json();
+  assertEquals(res.status, 400);
+  assertEquals(body.errors[0].status, "400");
+  assertEquals(body.errors[0].title, "invalid page parameter");
+  assertEquals(body.errors[0].source.parameter, "page[offset]");
+  await Deno.remove(dir, { recursive: true });
+});
+
 Deno.test("POST /nodes without the JSON:API content type returns 415", async () => {
   const { handler, authorKey, dir } = await makeServer();
   const node = signed(
