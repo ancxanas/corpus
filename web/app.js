@@ -5,6 +5,7 @@ const COLLECTIONS = [
   { id: "problems", label: "Problems" },
   { id: "recipes", label: "Recipes" },
   { id: "guides", label: "Guides" },
+  { id: "comparisons", label: "Comparisons" },
 ];
 
 const HERO = {
@@ -27,6 +28,11 @@ const HERO = {
     blurb:
       "Walkthroughs that connect a failure to its fix and the reasoning between them.",
   },
+  comparisons: {
+    title: "Comparisons",
+    blurb:
+      "Trade-off analyses between verified options, with receipts backing the numbers.",
+  },
 };
 
 const STATUSES = ["", "active", "draft", "disputed", "stale", "deprecated"];
@@ -42,6 +48,7 @@ const TYPE_ICON = {
   problems: "alert",
   recipes: "beaker",
   guides: "book",
+  comparisons: "scale",
   verifications: "shield",
 };
 
@@ -56,7 +63,7 @@ const state = {
   next: null,
   prev: null,
   total: 0,
-  counts: { problems: null, recipes: null, guides: null },
+  counts: { problems: null, recipes: null, guides: null, comparisons: null },
 };
 
 const view = document.getElementById("view");
@@ -169,6 +176,8 @@ const ICONS = {
     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
   shield:
     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>`,
+  scale:
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>`,
   back:
     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>`,
   copy:
@@ -224,15 +233,17 @@ function queryString() {
 }
 
 async function fetchCounts() {
-  const [problems, recipes, guides] = await Promise.all([
+  const [problems, recipes, guides, comparisons] = await Promise.all([
     api("/nodes?filter[node_type]=problems&page[limit]=1"),
     api("/nodes?filter[node_type]=recipes&page[limit]=1"),
     api("/nodes?filter[node_type]=guides&page[limit]=1"),
+    api("/nodes?filter[node_type]=comparisons&page[limit]=1"),
   ]);
   state.counts = {
     problems: problems.meta?.total ?? 0,
     recipes: recipes.meta?.total ?? 0,
     guides: guides.meta?.total ?? 0,
+    comparisons: comparisons.meta?.total ?? 0,
   };
 }
 
@@ -331,9 +342,13 @@ function tabsHtml() {
     id === "all"
       ? countValue("problems") === "–" ||
           countValue("recipes") === "–" ||
-          countValue("guides") === "–"
+          countValue("guides") === "–" ||
+          countValue("comparisons") === "–"
         ? "–"
-        : countValue("problems") + countValue("recipes") + countValue("guides")
+        : countValue("problems") +
+          countValue("recipes") +
+          countValue("guides") +
+          countValue("comparisons")
       : countValue(id);
   return `
     <nav class="tabs" aria-label="Knowledge types">
@@ -742,6 +757,24 @@ function relationshipsPanel(resource, includedById = new Map()) {
             ${
       (rel.data ?? []).map((r) => {
         const inc = includedById.get(r.id);
+        if (inc && inc.type === "verifications") {
+          const suite = inc.attributes?.test_suite ?? {};
+          const failed = suite.failed ?? 0;
+          const total = suite.total ?? 0;
+          const pct = total > 0
+            ? Math.round(((suite.passed ?? 0) / total) * 100)
+            : 0;
+          return `
+              <li class="rel-receipt">
+                <span>${nodeLink(r.id, `Receipt ${shortCid(r.id)}`)}</span>
+                <span class="pct ${failed > 0 ? "bad" : "ok"}">${
+            esc(pct)
+          }%</span>
+                <span class="mono" style="font-size:11px;color:var(--text-muted)">${
+            esc(suite.passed)
+          }/${esc(total)}</span>
+              </li>`;
+        }
         if (inc && inc.attributes?.payload?.recipe) {
           const title = inc.attributes.payload.recipe.title;
           const c = inc.meta?.confidence_score;
@@ -881,7 +914,7 @@ async function renderDetail(cid) {
 
   try {
     const body = await api(
-      `/nodes/${encodeURIComponent(cid)}?include=solutions`,
+      `/nodes/${encodeURIComponent(cid)}?include=solutions,benchmarks`,
     );
     if (token !== renderToken) return;
     const resource = body.data;
@@ -910,6 +943,8 @@ async function renderDetail(cid) {
       ? renderGuide(payload.guide)
       : payload.verification
       ? renderVerification(payload.verification)
+      : payload.comparison
+      ? renderComparison(payload.comparison)
       : `<p style="color:var(--text-muted)">No readable body.</p>`;
 
     const articleMeta = `
@@ -1272,6 +1307,47 @@ function renderVerification(verification) {
   }
       </tbody>
     </table>`;
+}
+
+function renderComparison(comparison) {
+  const dimensions = comparison.dimensions ?? [];
+  const recommendations = comparison.recommendations ?? [];
+  return `
+    <dl class="rows">
+      <dt>Decision context</dt><dd>${
+    esc(comparison.decision_context ?? "—")
+  }</dd>
+    </dl>
+    ${
+    dimensions.map((d) => `
+      <h2>${esc(d.name)}</h2>
+      <table class="cases">
+        <thead><tr><th>Option</th><th>Value</th><th>Benchmark</th></tr></thead>
+        <tbody>
+          ${
+      (d.options ?? []).map((o) => `
+            <tr>
+              <td>${esc(o.name)}</td>
+              <td class="mono">${esc(String(o.value))}</td>
+              <td>${
+        o.benchmark_receipt?.["/"]
+          ? cidLinkOrText(o.benchmark_receipt["/"])
+          : "—"
+      }</td>
+            </tr>`).join("")
+    }
+        </tbody>
+      </table>`).join("")
+  }
+    <h2>Recommendations</h2>
+    ${
+    recommendations.map((r) => `
+      <div class="recommendation">
+        <strong>${esc(r.choice)}</strong> — ${esc(r.condition)}
+        <div class="recommendation-reason">${esc(r.reason)}</div>
+      </div>`).join("")
+  }
+  `;
 }
 
 /* ---------- routing ---------- */

@@ -118,6 +118,17 @@ Deno.test("openapi document contains every documented path", async () => {
   assertEquals(typeof doc.paths["/nodes"].get, "object");
   assertEquals(typeof doc.paths["/nodes"].post, "object");
   assertEquals(typeof doc.paths["/agent/query"].post, "object");
+
+  const relationshipParam = doc.paths["/nodes/{cid}/{relationship}"].parameters
+    .find((p: { name: string }) => p.name === "relationship");
+  assertEquals(relationshipParam.name, "relationship");
+  for (const name of ["benchmarks", "recipes", "related_nodes", "solutions"]) {
+    assertEquals(
+      relationshipParam.schema.enum.includes(name),
+      true,
+      `relationship enum must include ${name}`,
+    );
+  }
   await Deno.remove(dir, { recursive: true });
 });
 

@@ -657,7 +657,7 @@ function queryParameters(): Json[] {
       in: "query",
       required: false,
       description:
-        "Comma-separated relationship names to inline: solutions, prerequisites, target.",
+        "Comma-separated relationship names to inline (e.g. solutions, benchmarks).",
       schema: { type: "string" },
     },
   );
@@ -844,7 +844,7 @@ function buildPaths(): Json {
             in: "query",
             required: false,
             description:
-              "Comma-separated relationship names to inline: solutions, prerequisites, target.",
+              "Comma-separated relationship names to inline (e.g. solutions, benchmarks).",
             schema: { type: "string" },
           },
         ],
@@ -875,9 +875,17 @@ function buildPaths(): Json {
           in: "path",
           required: true,
           description:
-            "Relationship name: solutions, prerequisites, target, problems.",
+            "Relationship name: solutions, prerequisites, problems, target, benchmarks, recipes, related_nodes.",
           schema: {
-            enum: ["solutions", "prerequisites", "target", "problems"],
+            enum: [
+              "solutions",
+              "prerequisites",
+              "problems",
+              "target",
+              "benchmarks",
+              "recipes",
+              "related_nodes",
+            ],
           },
         },
       ],

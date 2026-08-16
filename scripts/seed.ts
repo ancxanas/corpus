@@ -2,6 +2,7 @@ import { generateKeyPair, signNode } from "../src/core/sign.ts";
 import { computeCid } from "../src/core/cid.ts";
 import { dirname } from "node:path";
 import type {
+  ComparisonPayload,
   GuidePayload,
   Node,
   ProblemPayload,
@@ -186,6 +187,17 @@ function guideNode(
   return {
     osk: osk(nodeId, "Guide", publicKey, "active"),
     payload: { guide: payload },
+  };
+}
+
+function comparisonNode(
+  nodeId: string,
+  publicKey: string,
+  payload: ComparisonPayload["comparison"],
+): Node<ComparisonPayload> {
+  return {
+    osk: osk(nodeId, "Comparison", publicKey, "active"),
+    payload: { comparison: payload },
   };
 }
 
@@ -1737,6 +1749,8 @@ const vJsonB2 = verificationNode(
 await ingestVerification(vJsonA, verifier.secretKeyHex);
 await ingestVerification(vJsonB, verifier.secretKeyHex);
 await ingestVerification(vJsonB2, reviewer.secretKeyHex);
+const vJsonACid = await computeCid(signNode(vJsonA, verifier.secretKeyHex));
+const vJsonBCid = await computeCid(signNode(vJsonB, verifier.secretKeyHex));
 
 const guideStreaming = guideNode(ID(16), author.publicKeyHex, {
   title: "Streaming data through a memory-constrained service",
@@ -2448,6 +2462,34 @@ await ingest("guides", guideTime);
 await ingest("guides", guideRetries);
 await ingest("guides", guideLeaks);
 
+const comparisonJson = comparisonNode(ID(40), author.publicKeyHex, {
+  title: "Streaming vs pagination for large JSON uploads",
+  decision_context:
+    "The corpus records a web server that crashes when a 150MB JSON upload is buffered whole. This comparison weighs the two verified upload strategies on the evidence the corpus collected.",
+  dimensions: [{
+    name: "peak_memory at 150MB upload (MB)",
+    options: [
+      {
+        name: "streaming",
+        value: 48,
+        benchmark_receipt: { "/": vJsonACid },
+      },
+      {
+        name: "pagination",
+        value: "not measured (buffers whole body)",
+        benchmark_receipt: { "/": vJsonBCid },
+      },
+    ],
+  }],
+  recommendations: [{
+    condition: "uploads larger than ~100MB on a heap-limited worker",
+    choice: "streaming",
+    reason:
+      "The streaming recipe measured 48MB peak memory on the 150MB fixture and passed its suite; the pagination recipe also passes, but its receipt does not bound peak memory, and whole-body buffering is what exhausted the heap in the upload problem.",
+  }],
+});
+await ingest("comparisons", comparisonJson);
+
 console.log(
-  "seed complete: 10 recipes, 10 problems, 5 guides, 14 verifications",
+  "seed complete: 10 recipes, 10 problems, 5 guides, 1 comparison, 14 verifications",
 );

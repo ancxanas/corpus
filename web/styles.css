@@ -1074,6 +1074,28 @@ table.cases .fail {
   margin: 6px 0;
 }
 
+.rel-group li.rel-receipt {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.rel-group li.rel-receipt .pct {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.rel-receipt .pct.ok {
+  color: var(--ok);
+}
+
+.rel-receipt .pct.bad {
+  color: var(--bad);
+}
+
 .rel-group .rel-solution a {
   font-weight: 600;
 }
@@ -1297,6 +1319,23 @@ table.cases .fail {
   color: var(--text-muted);
   font-size: 13px;
   max-width: 48ch;
+}
+
+/* ---------- Comparison ---------- */
+
+.recommendation {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.recommendation-reason {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 /* ---------- Error ---------- */
