@@ -2462,30 +2462,77 @@ await ingest("guides", guideTime);
 await ingest("guides", guideRetries);
 await ingest("guides", guideLeaks);
 
-const comparisonJson = comparisonNode(ID(40), author.publicKeyHex, {
-  title: "Streaming vs pagination for large JSON uploads",
+const comparisonJson = comparisonNode(ID(41), author.publicKeyHex, {
+  title: "Streaming vs pagination for large JSON responses",
   decision_context:
-    "The corpus records a web server that crashes when a 150MB JSON upload is buffered whole. This comparison weighs the two verified upload strategies on the evidence the corpus collected.",
+    "The corpus records a worker that dies on a large JSON response because the handler serializes the entire result set into one buffer. Both verified fixes — a streaming body and server-side pagination — resolve the crash; this comparison records the trade-off between them on the evidence the corpus collected.",
   dimensions: [{
-    name: "peak_memory at 150MB upload (MB)",
+    name: "large-response suite",
     options: [
       {
         name: "streaming",
-        value: 48,
+        value: "passed 2/2",
         benchmark_receipt: { "/": vJsonACid },
       },
       {
         name: "pagination",
-        value: "not measured (buffers whole body)",
+        value: "passed 2/2",
+        benchmark_receipt: { "/": vJsonBCid },
+      },
+    ],
+  }, {
+    name: "peak memory at a 50MB response",
+    options: [
+      {
+        name: "streaming",
+        value: "flat — the body serializes as the client streams",
+        benchmark_receipt: { "/": vJsonACid },
+      },
+      {
+        name: "pagination",
+        value: "not reduced — tracks the materialized result set",
+        benchmark_receipt: { "/": vJsonBCid },
+      },
+    ],
+  }, {
+    name: "response payload bound",
+    options: [
+      {
+        name: "streaming",
+        value: "no — the full result set streams in one body",
+        benchmark_receipt: { "/": vJsonACid },
+      },
+      {
+        name: "pagination",
+        value: "yes — fixed page size per request",
+        benchmark_receipt: { "/": vJsonBCid },
+      },
+    ],
+  }, {
+    name: "client compatibility",
+    options: [
+      {
+        name: "streaming",
+        value: "must consume a streaming response body",
+        benchmark_receipt: { "/": vJsonACid },
+      },
+      {
+        name: "pagination",
+        value: "standard paged responses with a next cursor",
         benchmark_receipt: { "/": vJsonBCid },
       },
     ],
   }],
   recommendations: [{
-    condition: "uploads larger than ~100MB on a heap-limited worker",
+    condition: "clients can stream and peak memory is the binding constraint",
     choice: "streaming",
     reason:
-      "The streaming recipe measured 48MB peak memory on the 150MB fixture and passed its suite; the pagination recipe also passes, but its receipt does not bound peak memory, and whole-body buffering is what exhausted the heap in the upload problem.",
+      "The streaming recipe keeps RSS flat on the 50MB response and passed its suite; an aborted stream leaves a partial body, so clients must retry.",
+  }, {
+    condition: "clients need standard paged responses",
+    choice: "pagination",
+    reason:
+      "Pagination bounds each payload to a page, but memory still tracks the materialized result set and offset paging can skip rows when the data changes.",
   }],
 });
 await ingest("comparisons", comparisonJson);
