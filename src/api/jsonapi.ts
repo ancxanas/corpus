@@ -59,6 +59,7 @@ export function document(
   data: unknown,
   options: {
     baseUrl: string;
+    self?: string;
     included?: unknown[];
     links?: Record<string, string | null | undefined>;
     meta?: Record<string, unknown>;
@@ -67,7 +68,7 @@ export function document(
   const doc: Record<string, unknown> = {
     jsonapi: { version: "1.0" },
     links: {
-      self: options.baseUrl,
+      self: options.self ?? options.baseUrl,
       ...options.links,
     },
   };

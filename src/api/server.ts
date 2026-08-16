@@ -815,7 +815,12 @@ export function createApp(
       (n): n is NonNullable<typeof n> => n !== null,
     );
     const resources = nodes.map((n) => serializeResource(n, baseUrl));
-    return jsonResponse(document(resources, { baseUrl }));
+    return jsonResponse(
+      document(resources, {
+        baseUrl,
+        self: `${baseUrl}/nodes/${cid}/${name}`,
+      }),
+    );
   }
 
   async function getReceipts(
@@ -836,7 +841,11 @@ export function createApp(
     const receipts = await store.getReceiptsFor(cid);
     const resources = receipts.map((r) => serializeReceiptWith(r, baseUrl));
     return jsonResponse(
-      document(resources, { baseUrl, meta: { total: receipts.length } }),
+      document(resources, {
+        baseUrl,
+        self: `${baseUrl}/nodes/${cid}/verifications`,
+        meta: { total: receipts.length },
+      }),
     );
   }
 
@@ -880,6 +889,9 @@ export function createApp(
     const page = sorted.slice(clamped, clamped + limit);
     const resources = page.map((r) => serializeReceiptWith(r, baseUrl));
 
+    const requestUrl = new URL(request.url);
+    const selfUrl = new URL(requestUrl.pathname, baseUrl);
+    selfUrl.search = requestUrl.search;
     const pageLinks: Record<string, string> = {
       first: "",
       last: "",
@@ -887,7 +899,6 @@ export function createApp(
       prev: "",
     };
     const setParams = (o: number) => {
-      const requestUrl = new URL(request.url);
       const p = new URL(requestUrl.pathname, baseUrl);
       p.search = requestUrl.search;
       p.searchParams.set("page[offset]", String(o));
@@ -903,6 +914,7 @@ export function createApp(
     return jsonResponse(
       document(resources, {
         baseUrl,
+        self: selfUrl.toString(),
         links: {
           first: pageLinks.first,
           last: pageLinks.last,
@@ -959,7 +971,13 @@ export function createApp(
     if (collectionType) {
       const t = byPluralOrSingular(collectionType);
       if (!t) {
-        return jsonResponse(document([], { baseUrl, meta: { total: 0 } }));
+        return jsonResponse(
+          document([], {
+            baseUrl,
+            self: `${baseUrl}/${collectionType}`,
+            meta: { total: 0 },
+          }),
+        );
       }
       filter.node_type = t;
     }
@@ -1039,6 +1057,9 @@ export function createApp(
       }
     }
 
+    const requestUrl = new URL(request.url);
+    const selfUrl = new URL(requestUrl.pathname, baseUrl);
+    selfUrl.search = requestUrl.search;
     const pageLinks: Record<string, string> = {
       first: "",
       last: "",
@@ -1046,7 +1067,6 @@ export function createApp(
       prev: "",
     };
     const setParams = (o: number) => {
-      const requestUrl = new URL(request.url);
       const p = new URL(requestUrl.pathname, baseUrl);
       p.search = requestUrl.search;
       p.searchParams.set("page[offset]", String(o));
@@ -1062,6 +1082,7 @@ export function createApp(
     return jsonResponse(
       document(resources, {
         baseUrl,
+        self: selfUrl.toString(),
         links: {
           first: pageLinks.first,
           last: pageLinks.last,
@@ -1093,7 +1114,11 @@ export function createApp(
       }
       const resources = versionNodes.map((n) => serializeResource(n, baseUrl));
       return jsonResponse(
-        document(resources, { baseUrl, meta: { node_id: nodeId } }),
+        document(resources, {
+          baseUrl,
+          self: `${baseUrl}/nodes/by-node-id/${nodeId}/versions`,
+          meta: { node_id: nodeId },
+        }),
       );
     }
 

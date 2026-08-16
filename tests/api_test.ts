@@ -936,7 +936,7 @@ Deno.test("trusted proxy headers set the base URL everywhere", async () => {
     assertEquals(llms.includes("https://corpus.example/openapi.json"), true);
 
     const nodes = await (await req(handler, "/nodes", forwarded)).json();
-    assertEquals(nodes.links.self, "https://corpus.example");
+    assertEquals(nodes.links.self, "https://corpus.example/nodes");
     assertEquals(
       nodes.links.first.startsWith("https://corpus.example/nodes"),
       true,
@@ -944,6 +944,27 @@ Deno.test("trusted proxy headers set the base URL everywhere", async () => {
     assertEquals(
       nodes.data[0].links.self,
       `https://corpus.example/nodes/${nodes.data[0].id}`,
+    );
+
+    const problems = await (await req(handler, "/problems", forwarded)).json();
+    assertEquals(problems.links.self, "https://corpus.example/problems");
+
+    const verifications =
+      await (await req(handler, "/verifications", forwarded))
+        .json();
+    assertEquals(
+      verifications.links.self,
+      "https://corpus.example/verifications",
+    );
+
+    const searched = await (await req(
+      handler,
+      "/nodes?search=heap&sort=-confidence_score",
+      forwarded,
+    )).json();
+    assertEquals(
+      searched.links.self,
+      "https://corpus.example/nodes?search=heap&sort=-confidence_score",
     );
   } finally {
     await index.close();
