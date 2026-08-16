@@ -4,17 +4,29 @@ import { problemModule } from "./problem.ts";
 import { recipeModule } from "./recipe.ts";
 import { guideModule } from "./guide.ts";
 import { verificationModule } from "./verification.ts";
+import { referenceModule } from "./reference.ts";
+import { comparisonModule } from "./comparison.ts";
+import { improvementModule } from "./improvement.ts";
+import { blueprintModule } from "./blueprint.ts";
 
 export { isProblem } from "./problem.ts";
 export { isRecipe } from "./recipe.ts";
 export { isGuide } from "./guide.ts";
 export { isVerification } from "./verification.ts";
+export { isReference } from "./reference.ts";
+export { isComparison } from "./comparison.ts";
+export { isImprovement } from "./improvement.ts";
+export { isBlueprint } from "./blueprint.ts";
 
 export const registry: Record<NodeType, NodeTypeModule> = {
   Problem: problemModule,
   Recipe: recipeModule,
   Guide: guideModule,
   Verification: verificationModule,
+  Reference: referenceModule,
+  Comparison: comparisonModule,
+  Improvement: improvementModule,
+  Blueprint: blueprintModule,
 };
 
 export function pluralOf(nodeType: NodeType): string {

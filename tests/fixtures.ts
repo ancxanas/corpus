@@ -1,9 +1,13 @@
 import type {
+  BlueprintPayload,
+  ComparisonPayload,
   DeprecationTrigger,
   GuidePayload,
+  ImprovementPayload,
   Node,
   ProblemPayload,
   RecipePayload,
+  ReferencePayload,
   VerificationPayload,
 } from "../src/core/types.ts";
 import { uuidv7 } from "../src/core/uuidv7.ts";
@@ -176,6 +180,239 @@ export function guideNode(
             },
           },
         ],
+      },
+    },
+  };
+}
+
+export function referenceNode(
+  pubKey: string,
+  options: { nodeId?: string; title?: string } = {},
+): Node<ReferencePayload> {
+  return {
+    osk: {
+      version: "0.3.0",
+      node_type: "Reference",
+      node_id: options.nodeId ?? uuidv7(),
+      knowledge_lifecycle: {
+        status: "active",
+        last_verified: "2026-08-14T00:00:00Z",
+      },
+      attribution: { author_type: "agent", public_key: pubKey },
+    },
+    payload: {
+      reference: {
+        title: options.title ?? "Deno fetch API reference",
+        topic: "deno",
+        source: {
+          type: "official_docs",
+          url: "https://docs.deno.com/api",
+          synced_at: "2026-08-14T00:00:00Z",
+        },
+        entries: [
+          {
+            name: "fetch",
+            kind: "function",
+            signature: "fetch(input): Promise<Response>",
+            description: "Performs an HTTP request.",
+            version: ">=2.0.0",
+            source_pointer: "https://docs.deno.com/api#fetch",
+          },
+        ],
+        consistency: {
+          method: "agent_verification",
+          last_checked: "2026-08-14T00:00:00Z",
+          result: "confirmed",
+        },
+      },
+    },
+  };
+}
+
+export function comparisonNode(
+  pubKey: string,
+  options: {
+    nodeId?: string;
+    benchmarkReceiptCids?: string[];
+  } = {},
+): Node<ComparisonPayload> {
+  return {
+    osk: {
+      version: "0.3.0",
+      node_type: "Comparison",
+      node_id: options.nodeId ?? uuidv7(),
+      knowledge_lifecycle: {
+        status: "active",
+        last_verified: "2026-08-14T00:00:00Z",
+      },
+      attribution: { author_type: "agent", public_key: pubKey },
+    },
+    payload: {
+      comparison: {
+        title: "Deno vs Node for HTTP servers",
+        decision_context: "Choose a server runtime for the ingest tier.",
+        dimensions: [
+          {
+            name: "cold start latency",
+            options: [
+              {
+                name: "deno",
+                value: 12,
+                ...(options.benchmarkReceiptCids?.[0]
+                  ? {
+                    benchmark_receipt: { "/": options.benchmarkReceiptCids[0] },
+                  }
+                  : {}),
+              },
+              {
+                name: "node",
+                value: 18,
+                ...(options.benchmarkReceiptCids?.[1]
+                  ? {
+                    benchmark_receipt: { "/": options.benchmarkReceiptCids[1] },
+                  }
+                  : {}),
+              },
+            ],
+          },
+        ],
+        recommendations: [
+          {
+            condition: "when cold start latency matters",
+            choice: "deno",
+            reason: "it boots fastest",
+          },
+        ],
+      },
+    },
+  };
+}
+
+export function improvementNode(
+  pubKey: string,
+  options: {
+    nodeId?: string;
+    recipeCids?: string[];
+  } = {},
+): Node<ImprovementPayload> {
+  return {
+    osk: {
+      version: "0.3.0",
+      node_type: "Improvement",
+      node_id: options.nodeId ?? uuidv7(),
+      knowledge_lifecycle: {
+        status: "active",
+        last_verified: "2026-08-14T00:00:00Z",
+      },
+      attribution: { author_type: "agent", public_key: pubKey },
+    },
+    payload: {
+      improvement: {
+        title: "Migrate the ingest tier to streaming",
+        current_state: {
+          description: "Whole-file buffering.",
+          metrics: { peak_memory_mb: 512 },
+        },
+        target_state: {
+          description: "Row-by-row streaming.",
+          expected_metrics: { peak_memory_mb: 64 },
+        },
+        rationale: "Large uploads exhaust memory.",
+        implementation: {
+          approach: "incremental",
+          phases: [
+            {
+              phase: 1,
+              title: "Stream the reader",
+              effort: "M",
+              ...(options.recipeCids
+                ? {
+                  recipe_links: options.recipeCids.map((c) => ({
+                    node: { "/": c },
+                    relation: "uses" as const,
+                  })),
+                }
+                : {}),
+            },
+          ],
+        },
+        validation: {
+          success_criteria: "peak memory under 64MB",
+          verification_plan: "run the upload benchmark",
+        },
+      },
+    },
+  };
+}
+
+export function blueprintNode(
+  pubKey: string,
+  options: {
+    nodeId?: string;
+    relatedCids?: string[];
+  } = {},
+): Node<BlueprintPayload> {
+  return {
+    osk: {
+      version: "0.3.0",
+      node_type: "Blueprint",
+      node_id: options.nodeId ?? uuidv7(),
+      knowledge_lifecycle: {
+        status: "active",
+        last_verified: "2026-08-14T00:00:00Z",
+      },
+      attribution: { author_type: "agent", public_key: pubKey },
+    },
+    payload: {
+      blueprint: {
+        title: "Unify the runtime on Deno",
+        current_landscape: {
+          fragments: [
+            {
+              technology: "node",
+              purpose: "API tier",
+              limitations: ["large memory footprint"],
+            },
+          ],
+          systemic_friction: "two runtimes to patch and secure",
+        },
+        proposed_architecture: {
+          core_principle: "one runtime everywhere",
+          layers: [
+            {
+              layer: 1,
+              name: "edge",
+              technology: "deno",
+              responsibility: "route requests",
+            },
+          ],
+        },
+        rationale: ["one dependency graph", "single security surface"],
+        feasibility: {
+          blockers: [
+            {
+              issue: "migration cost",
+              type: "implementation",
+              severity: "medium",
+            },
+          ],
+          enablers: ["shared permissions model"],
+        },
+        adoption_trajectory: {
+          phase_1: "pilot the API tier",
+          phase_2: "migrate the workers",
+          phase_3: "retire node",
+        },
+        ...(options.relatedCids
+          ? {
+            related_nodes: options.relatedCids.map((c) => ({
+              node: { "/": c },
+              relation: "enables" as const,
+            })),
+          }
+          : {}),
+        epistemic_status: "feasible",
+        confidence: "medium",
       },
     },
   };

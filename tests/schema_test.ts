@@ -1,10 +1,14 @@
 import { assertEquals } from "@std/assert";
 import { validateNode } from "../src/schema/validate.ts";
 import type {
+  BlueprintPayload,
+  ComparisonPayload,
   GuidePayload,
+  ImprovementPayload,
   Node,
   ProblemPayload,
   RecipePayload,
+  ReferencePayload,
   Step,
   VerificationPayload,
 } from "../src/core/types.ts";
@@ -467,6 +471,323 @@ Deno.test("source attestation without attested source fails", async () => {
   const issues = await validateNode(node);
   assertEquals(
     issues.some((i) => i.message.includes("attested_source")),
+    true,
+  );
+});
+
+function referenceNode(
+  overrides: Partial<ReferencePayload> = {},
+): Node<ReferencePayload> {
+  return {
+    osk: {
+      version: "0.3.0",
+      node_type: "Reference",
+      node_id: "0190c0a0-0000-7000-8000-000000000005",
+      knowledge_lifecycle: {
+        status: "active",
+        last_verified: "2026-08-14T00:00:00Z",
+      },
+      attribution: {
+        author_type: "agent",
+        public_key: "e".repeat(64),
+      },
+    },
+    payload: {
+      reference: {
+        title: "A very real reference",
+        topic: "deno",
+        source: {
+          type: "official_docs",
+          url: "https://example.com/docs",
+          synced_at: "2026-08-14T00:00:00Z",
+        },
+        entries: [
+          {
+            name: "fetch",
+            kind: "function",
+            signature: "fetch(input): Promise<Response>",
+            description: "Performs an HTTP request.",
+            version: ">=1.0.0",
+            source_pointer: "https://example.com/docs#fetch",
+          },
+        ],
+        consistency: {
+          method: "agent_verification",
+          last_checked: "2026-08-14T00:00:00Z",
+          result: "confirmed",
+        },
+      },
+    },
+    ...overrides,
+  };
+}
+
+function comparisonNode(
+  overrides: Partial<ComparisonPayload> = {},
+): Node<ComparisonPayload> {
+  return {
+    osk: {
+      version: "0.3.0",
+      node_type: "Comparison",
+      node_id: "0190c0a0-0000-7000-8000-000000000006",
+      knowledge_lifecycle: {
+        status: "active",
+        last_verified: "2026-08-14T00:00:00Z",
+      },
+      attribution: {
+        author_type: "agent",
+        public_key: "f".repeat(64),
+      },
+    },
+    payload: {
+      comparison: {
+        title: "A very real comparison",
+        decision_context: "Pick a server runtime.",
+        dimensions: [
+          {
+            name: "latency",
+            options: [
+              {
+                name: "deno",
+                value: 12,
+                benchmark_receipt: { "/": "b".repeat(61) },
+              },
+            ],
+          },
+        ],
+        recommendations: [
+          {
+            condition: "when latency matters",
+            choice: "deno",
+            reason: "it is fastest",
+          },
+        ],
+      },
+    },
+    ...overrides,
+  };
+}
+
+function improvementNode(
+  overrides: Partial<ImprovementPayload> = {},
+): Node<ImprovementPayload> {
+  return {
+    osk: {
+      version: "0.3.0",
+      node_type: "Improvement",
+      node_id: "0190c0a0-0000-7000-8000-000000000007",
+      knowledge_lifecycle: {
+        status: "active",
+        last_verified: "2026-08-14T00:00:00Z",
+      },
+      attribution: {
+        author_type: "agent",
+        public_key: "a".repeat(63) + "0",
+      },
+    },
+    payload: {
+      improvement: {
+        title: "A very real improvement",
+        current_state: {
+          description: "Monolithic service.",
+          metrics: { latency_ms: 1000 },
+        },
+        target_state: {
+          description: "Split services.",
+          expected_metrics: { latency_ms: 200 },
+        },
+        rationale: "Scale is needed.",
+        implementation: {
+          approach: "incremental",
+          phases: [
+            {
+              phase: 1,
+              title: "Extract module",
+              effort: "M",
+              recipe_links: [
+                { node: { "/": "b".repeat(61) }, relation: "uses" },
+              ],
+            },
+          ],
+        },
+        validation: {
+          success_criteria: "latency under 200ms",
+          verification_plan: "run the benchmark suite",
+        },
+      },
+    },
+    ...overrides,
+  };
+}
+
+function blueprintNode(
+  overrides: Partial<BlueprintPayload> = {},
+): Node<BlueprintPayload> {
+  return {
+    osk: {
+      version: "0.3.0",
+      node_type: "Blueprint",
+      node_id: "0190c0a0-0000-7000-8000-000000000008",
+      knowledge_lifecycle: {
+        status: "active",
+        last_verified: "2026-08-14T00:00:00Z",
+      },
+      attribution: {
+        author_type: "agent",
+        public_key: "a".repeat(63) + "1",
+      },
+    },
+    payload: {
+      blueprint: {
+        title: "A very real blueprint",
+        current_landscape: {
+          fragments: [
+            {
+              technology: "legacy",
+              purpose: "serves traffic",
+              limitations: ["hard to scale"],
+            },
+          ],
+          systemic_friction: "each team runs its own stack",
+        },
+        proposed_architecture: {
+          core_principle: "one shared data plane",
+          layers: [
+            {
+              layer: 1,
+              name: "edge",
+              technology: "deno",
+              responsibility: "route requests",
+            },
+          ],
+        },
+        rationale: ["fewer moving parts"],
+        feasibility: {
+          blockers: [
+            {
+              issue: "migration cost",
+              type: "implementation",
+              severity: "high",
+            },
+          ],
+          enablers: ["buy-in from two teams"],
+        },
+        adoption_trajectory: {
+          phase_1: "pilot",
+          phase_2: "rollout",
+          phase_3: "full migration",
+        },
+        related_nodes: [
+          { node: { "/": "b".repeat(61) }, relation: "enables" },
+        ],
+        epistemic_status: "vision",
+        confidence: "medium",
+      },
+    },
+    ...overrides,
+  };
+}
+
+Deno.test("valid Reference passes validation", async () => {
+  assertEquals(await validateNode(referenceNode()), []);
+});
+
+Deno.test("active reference with drifted consistency fails", async () => {
+  const node = referenceNode();
+  node.payload.reference.consistency.result = "drifted";
+  const issues = await validateNode(node);
+  assertEquals(
+    issues.some((i) => i.message.includes("consistency.result")),
+    true,
+  );
+});
+
+Deno.test("agent_verification reference without source fails", async () => {
+  const node = referenceNode();
+  node.payload.reference.source.url = undefined;
+  node.payload.reference.source.snapshot_cid = undefined;
+  const issues = await validateNode(node);
+  assertEquals(
+    issues.some((i) => i.message.includes("source.url")),
+    true,
+  );
+});
+
+Deno.test("reference entry without source_pointer fails", async () => {
+  const node = referenceNode();
+  const entry = node.payload.reference.entries[0] as
+    & { source_pointer?: string }
+    & Record<string, unknown>;
+  delete entry.source_pointer;
+  const issues = await validateNode(node);
+  assertEquals(
+    issues.some((i) => i.message.includes("source_pointer")),
+    true,
+  );
+});
+
+Deno.test("valid Comparison passes validation", async () => {
+  assertEquals(await validateNode(comparisonNode()), []);
+});
+
+Deno.test("active comparison with numeric value lacking receipt fails", async () => {
+  const node = comparisonNode();
+  delete node.payload.comparison.dimensions[0]!.options[0]!.benchmark_receipt;
+  const issues = await validateNode(node);
+  assertEquals(
+    issues.some((i) => i.message.includes("benchmark_receipt")),
+    true,
+  );
+});
+
+Deno.test("comparison recommendation naming unknown option fails", async () => {
+  const node = comparisonNode();
+  node.payload.comparison.recommendations[0]!.choice = "bun";
+  const issues = await validateNode(node);
+  assertEquals(
+    issues.some((i) => i.message.includes("must name an option")),
+    true,
+  );
+});
+
+Deno.test("valid Improvement passes validation", async () => {
+  assertEquals(await validateNode(improvementNode()), []);
+});
+
+Deno.test("improvement without validation evidence fails", async () => {
+  const node = improvementNode();
+  node.payload.improvement.validation = {};
+  const issues = await validateNode(node);
+  assertEquals(
+    issues.some((i) => i.message.includes("validation must include")),
+    true,
+  );
+});
+
+Deno.test("improvement without phases fails", async () => {
+  const node = improvementNode();
+  node.payload.improvement.implementation.phases = [];
+  const issues = await validateNode(node);
+  assertEquals(issues.some((i) => i.pointer.includes("phases")), true);
+});
+
+Deno.test("valid Blueprint passes validation", async () => {
+  assertEquals(await validateNode(blueprintNode()), []);
+});
+
+Deno.test("blueprint without blockers fails", async () => {
+  const node = blueprintNode();
+  node.payload.blueprint.feasibility.blockers = [];
+  const issues = await validateNode(node);
+  assertEquals(issues.some((i) => i.pointer.includes("blockers")), true);
+});
+
+Deno.test("blueprint with empty trajectory phase fails", async () => {
+  const node = blueprintNode();
+  node.payload.blueprint.adoption_trajectory!.phase_2 = "";
+  const issues = await validateNode(node);
+  assertEquals(
+    issues.some((i) => i.pointer.includes("phase_2")),
     true,
   );
 });

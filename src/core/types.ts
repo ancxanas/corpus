@@ -2,7 +2,11 @@ export type NodeType =
   | "Problem"
   | "Recipe"
   | "Guide"
-  | "Verification";
+  | "Verification"
+  | "Reference"
+  | "Comparison"
+  | "Improvement"
+  | "Blueprint";
 
 export type LifecycleStatus = "active" | "deprecated" | "disputed" | "draft";
 export type EffectiveStatus =
@@ -194,6 +198,137 @@ export interface VerificationPayload {
 export interface Node<T = unknown> {
   osk: Osk;
   payload: T;
+}
+
+export interface ReferencePayload {
+  reference: {
+    title: string;
+    topic: string;
+    source: {
+      type: "official_docs" | "specification" | "source_code" | "vendor_docs";
+      url?: string;
+      snapshot_cid?: IpldLink;
+      synced_at?: string;
+    };
+    entries: Array<{
+      name: string;
+      kind: "function" | "type" | "flag" | "config" | "behavior";
+      signature?: string | null;
+      description: string;
+      version: string;
+      source_pointer: string;
+    }>;
+    consistency: {
+      method: "source_sync" | "manual" | "agent_verification";
+      last_checked: string;
+      result: "confirmed" | "drifted";
+    };
+  };
+}
+
+export interface ComparisonPayload {
+  comparison: {
+    title: string;
+    decision_context: string;
+    dimensions: Array<{
+      name: string;
+      options: Array<{
+        name: string;
+        value: number | string;
+        benchmark_receipt?: IpldLink;
+      }>;
+    }>;
+    recommendations: Array<{
+      condition: string;
+      choice: string;
+      reason: string;
+    }>;
+  };
+}
+
+export interface ImprovementPayload {
+  improvement: {
+    title: string;
+    current_state: {
+      description: string;
+      metrics: Record<string, number>;
+    };
+    target_state: {
+      description: string;
+      expected_metrics: Record<string, number>;
+    };
+    rationale: string;
+    implementation: {
+      approach: "incremental" | "big_bang" | "parallel";
+      phases: Array<{
+        phase: number;
+        title: string;
+        effort: string;
+        recipe_links?: Array<{
+          node: IpldLink;
+          relation: "uses" | "requires" | "replaces";
+        }>;
+      }>;
+    };
+    trade_offs?: Array<{
+      aspect: string;
+      downside: string;
+      mitigation: string;
+    }>;
+    validation: {
+      success_criteria?: string;
+      verification_plan?: string;
+      benchmark_receipts?: IpldLink[];
+    };
+  };
+}
+
+export interface BlueprintPayload {
+  blueprint: {
+    title: string;
+    current_landscape: {
+      fragments: Array<{
+        technology: string;
+        purpose: string;
+        limitations: string[];
+      }>;
+      systemic_friction: string;
+    };
+    proposed_architecture: {
+      core_principle: string;
+      layers: Array<{
+        layer: number;
+        name: string;
+        technology: string;
+        responsibility: string;
+      }>;
+    };
+    rationale: string[];
+    feasibility: {
+      blockers: Array<{
+        issue: string;
+        type: "implementation" | "social" | "economic" | "political";
+        severity: "high" | "medium" | "low";
+      }>;
+      enablers: string[];
+    };
+    adoption_trajectory?: {
+      phase_1: string;
+      phase_2: string;
+      phase_3: string;
+    };
+    related_nodes?: Array<{
+      node: IpldLink;
+      relation: "comparison" | "prerequisite" | "solves" | "enables";
+    }>;
+    epistemic_status:
+      | "vision"
+      | "feasible"
+      | "in_progress"
+      | "realized"
+      | "abandoned";
+    confidence: "high" | "medium" | "low";
+  };
 }
 
 export interface ValidationIssue {

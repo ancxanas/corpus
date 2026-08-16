@@ -8,10 +8,14 @@ import { generateKeyPair } from "../src/core/sign.ts";
 import { createApp } from "../src/api/server.ts";
 import type { Node, ProblemPayload, RecipePayload } from "../src/core/types.ts";
 import {
+  blueprintNode,
   cidOf,
+  comparisonNode,
   guideNode,
+  improvementNode,
   problemNode,
   recipeNode,
+  referenceNode,
   signed,
   verificationNode,
 } from "./fixtures.ts";
@@ -233,6 +237,151 @@ Deno.test("POST /nodes stores a signed node and returns meta.cid", async () => {
   assertEquals(res.status, 201);
   assertEquals(typeof body.meta.cid, "string");
   assertEquals(body.data.type, "problems");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("POST and search each new node type", async () => {
+  const { handler, authorKey, dir } = await makeServer();
+  const key = authorKey;
+  const cases: Array<[string, Node]> = [
+    ["references", referenceNode(key.publicKeyHex)],
+    [
+      "comparisons",
+      comparisonNode(key.publicKeyHex, {
+        benchmarkReceiptCids: ["b".repeat(61), "b".repeat(61)],
+      }),
+    ],
+    ["improvements", improvementNode(key.publicKeyHex)],
+    ["blueprints", blueprintNode(key.publicKeyHex)],
+  ];
+  for (const [plural, node] of cases) {
+    const posted = await req(
+      handler,
+      "/nodes",
+      postNode(plural, signed(node, key.secretKeyHex)),
+    );
+    const body = await posted.json();
+    assertEquals(posted.status, 201, `POST ${plural}`);
+    assertEquals(body.data.type, plural);
+    const cid = body.meta.cid as string;
+
+    const collection = await req(handler, `/${plural}`);
+    const cbody = await collection.json();
+    assert(
+      cbody.data.some((d: { id: string }) => d.id === cid),
+      `${plural} collection must contain the posted node`,
+    );
+
+    const filtered = await req(
+      handler,
+      `/nodes?filter[node_type]=${node.osk.node_type}`,
+    );
+    const fbody = await filtered.json();
+    assert(
+      fbody.data.some((d: { id: string }) => d.id === cid),
+      `filter[node_type]=${node.osk.node_type} must find the node`,
+    );
+  }
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("relationship include works for new node types", async () => {
+  const { handler, authorKey, verifierKey, problemCid, recipeCid, dir } =
+    await makeServer();
+  const key = authorKey;
+
+  const receipt = signed(
+    verificationNode(
+      verifierKey.publicKeyHex,
+      problemCid,
+      recipeCid,
+      "d".repeat(64),
+    ),
+    verifierKey.secretKeyHex,
+  );
+  const postedReceipt = await req(
+    handler,
+    "/verifications",
+    postNode("verifications", receipt),
+  );
+  const receiptCid = (await postedReceipt.json()).meta.cid as string;
+
+  const improvement = signed(
+    improvementNode(key.publicKeyHex, { recipeCids: [recipeCid] }),
+    key.secretKeyHex,
+  );
+  const impRes = await req(
+    handler,
+    "/nodes",
+    postNode("improvements", improvement),
+  );
+  const impCid = (await impRes.json()).meta.cid as string;
+  const impInc = await req(handler, `/nodes/${impCid}?include=recipes`);
+  const impBody = await impInc.json();
+  assert(
+    impBody.included.some((i: { id: string }) => i.id === recipeCid),
+    "improvement include must embed the linked recipe",
+  );
+
+  const blueprint = signed(
+    blueprintNode(key.publicKeyHex, { relatedCids: [recipeCid] }),
+    key.secretKeyHex,
+  );
+  const bpRes = await req(
+    handler,
+    "/nodes",
+    postNode("blueprints", blueprint),
+  );
+  const bpCid = (await bpRes.json()).meta.cid as string;
+  const bpInc = await req(handler, `/nodes/${bpCid}?include=related_nodes`);
+  const bpBody = await bpInc.json();
+  assert(
+    bpBody.included.some((i: { id: string }) => i.id === recipeCid),
+    "blueprint include must embed the related node",
+  );
+
+  const comparison = signed(
+    comparisonNode(key.publicKeyHex, {
+      benchmarkReceiptCids: [receiptCid, receiptCid],
+    }),
+    key.secretKeyHex,
+  );
+  const cmpRes = await req(
+    handler,
+    "/nodes",
+    postNode("comparisons", comparison),
+  );
+  const cmpCid = (await cmpRes.json()).meta.cid as string;
+  const cmpNode = await req(handler, `/nodes/${cmpCid}`);
+  const cmpBody = await cmpNode.json();
+  const benchmarks = cmpBody.data.relationships.benchmarks.data as Array<
+    { type: string; id: string }
+  >;
+  assert(
+    benchmarks.some((r) => r.id === receiptCid),
+    "comparison must expose the benchmark receipt relationship",
+  );
+  assert(
+    benchmarks.every((r) => r.type === "verifications"),
+    "benchmark relationship data must resolve to verifications",
+  );
+
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("schemas are served for the new node types", async () => {
+  const { handler, dir } = await makeServer();
+  for (const type of ["Reference", "Comparison", "Improvement", "Blueprint"]) {
+    const res = await req(handler, `/schemas/${type}`);
+    const body = await res.json();
+    assertEquals(res.status, 200, `GET /schemas/${type}`);
+    assertEquals(body.data.type, "schemas");
+    assertEquals(
+      body.data.attributes.required.includes("osk"),
+      true,
+      `${type} schema requires osk`,
+    );
+  }
   await Deno.remove(dir, { recursive: true });
 });
 

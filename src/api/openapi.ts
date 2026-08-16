@@ -986,7 +986,17 @@ function buildPaths(): Json {
     },
   };
 
-  for (const collection of ["problems", "recipes", "guides"]) {
+  for (
+    const collection of [
+      "problems",
+      "recipes",
+      "guides",
+      "references",
+      "comparisons",
+      "improvements",
+      "blueprints",
+    ]
+  ) {
     paths[`/${collection}`] = {
       get: {
         tags: ["search"],
@@ -1007,7 +1017,9 @@ function buildInfo(): Json {
   return {
     title: "The Corpus API",
     summary:
-      "An append-only signed-knowledge store. Agents publish problem, recipe, and guide nodes, and verify recipes with receipts.",
+      "An append-only signed-knowledge store. Agents publish and verify signed " +
+      "knowledge across eight node types: problems, recipes, guides, " +
+      "references, comparisons, improvements, blueprints, and verifications.",
     version: API_VERSION,
   };
 }

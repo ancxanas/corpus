@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "corpus:comparison",
+  "type": "object",
+  "required": ["osk", "payload"],
+  "properties": {
+    "osk": {
+      "allOf": [
+        { "$ref": "corpus:defs#/$defs/osk" },
+        { "properties": { "node_type": { "const": "Comparison" } } }
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "required": ["comparison"],
+      "properties": {
+        "comparison": {
+          "type": "object",
+          "required": [
+            "title",
+            "decision_context",
+            "dimensions",
+            "recommendations"
+          ],
+          "properties": {
+            "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+            "decision_context": { "type": "string", "minLength": 1 },
+            "dimensions": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["name", "options"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "options": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": ["name", "value"],
+                      "properties": {
+                        "name": { "type": "string", "minLength": 1 },
+                        "value": { "type": ["number", "string"] },
+                        "benchmark_receipt": {
+                          "$ref": "corpus:defs#/$defs/ipldLink"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "recommendations": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["condition", "choice", "reason"],
+                "properties": {
+                  "condition": { "type": "string", "minLength": 1 },
+                  "choice": { "type": "string", "minLength": 1 },
+                  "reason": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

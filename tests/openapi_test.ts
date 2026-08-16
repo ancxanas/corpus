@@ -106,6 +106,10 @@ Deno.test("openapi document contains every documented path", async () => {
     "/problems",
     "/recipes",
     "/guides",
+    "/references",
+    "/comparisons",
+    "/improvements",
+    "/blueprints",
     "/verifications",
   ];
   for (const path of expected) {
@@ -161,6 +165,10 @@ Deno.test("openapi document embeds the node and defs schemas", async () => {
       "Recipe",
       "Guide",
       "Verification",
+      "Reference",
+      "Comparison",
+      "Improvement",
+      "Blueprint",
       "osk",
       "ipldLink",
       "iso8601",

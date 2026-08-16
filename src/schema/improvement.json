@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "corpus:improvement",
+  "type": "object",
+  "required": ["osk", "payload"],
+  "properties": {
+    "osk": {
+      "allOf": [
+        { "$ref": "corpus:defs#/$defs/osk" },
+        { "properties": { "node_type": { "const": "Improvement" } } }
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "required": ["improvement"],
+      "properties": {
+        "improvement": {
+          "type": "object",
+          "required": [
+            "title",
+            "current_state",
+            "target_state",
+            "rationale",
+            "implementation",
+            "validation"
+          ],
+          "properties": {
+            "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+            "current_state": {
+              "type": "object",
+              "required": ["description", "metrics"],
+              "properties": {
+                "description": { "type": "string", "minLength": 1 },
+                "metrics": {
+                  "type": "object",
+                  "additionalProperties": { "type": "number" }
+                }
+              },
+              "additionalProperties": false
+            },
+            "target_state": {
+              "type": "object",
+              "required": ["description", "expected_metrics"],
+              "properties": {
+                "description": { "type": "string", "minLength": 1 },
+                "expected_metrics": {
+                  "type": "object",
+                  "additionalProperties": { "type": "number" }
+                }
+              },
+              "additionalProperties": false
+            },
+            "rationale": { "type": "string", "minLength": 1 },
+            "implementation": {
+              "type": "object",
+              "required": ["approach", "phases"],
+              "properties": {
+                "approach": {
+                  "enum": ["incremental", "big_bang", "parallel"]
+                },
+                "phases": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "required": ["phase", "title", "effort"],
+                    "properties": {
+                      "phase": { "type": "integer", "minimum": 1 },
+                      "title": { "type": "string", "minLength": 1 },
+                      "effort": { "type": "string", "minLength": 1 },
+                      "recipe_links": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": ["node", "relation"],
+                          "properties": {
+                            "node": { "$ref": "corpus:defs#/$defs/ipldLink" },
+                            "relation": {
+                              "enum": ["uses", "requires", "replaces"]
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "trade_offs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["aspect", "downside", "mitigation"],
+                "properties": {
+                  "aspect": { "type": "string", "minLength": 1 },
+                  "downside": { "type": "string", "minLength": 1 },
+                  "mitigation": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": false
+              }
+            },
+            "validation": {
+              "type": "object",
+              "properties": {
+                "success_criteria": { "type": "string", "minLength": 1 },
+                "verification_plan": { "type": "string", "minLength": 1 },
+                "benchmark_receipts": {
+                  "type": "array",
+                  "items": { "$ref": "corpus:defs#/$defs/ipldLink" }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
