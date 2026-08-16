@@ -740,6 +740,24 @@ Deno.test("active comparison with numeric value lacking receipt fails", async ()
   );
 });
 
+Deno.test("draft comparison with numeric value lacking receipt fails schema", async () => {
+  const node = comparisonNode();
+  node.osk.knowledge_lifecycle.status = "draft";
+  delete node.payload.comparison.dimensions[0]!.options[0]!.benchmark_receipt;
+  const issues = await validateNode(node);
+  assertEquals(
+    issues.some((i) => i.message.includes("benchmark_receipt")),
+    true,
+  );
+});
+
+Deno.test("comparison with string value and no receipt passes", async () => {
+  const node = comparisonNode();
+  node.payload.comparison.dimensions[0]!.options[0]!.value = "passed 2/2";
+  delete node.payload.comparison.dimensions[0]!.options[0]!.benchmark_receipt;
+  assertEquals(await validateNode(node), []);
+});
+
 Deno.test("comparison recommendation naming unknown option fails", async () => {
   const node = comparisonNode();
   node.payload.comparison.recommendations[0]!.choice = "bun";

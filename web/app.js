@@ -154,6 +154,7 @@ function snippetOf(resource) {
   if (payload.problem) return payload.problem.summary ?? "";
   if (payload.recipe) return payload.recipe.summary ?? "";
   if (payload.guide) return payload.guide.summary ?? "";
+  if (payload.comparison) return payload.comparison.decision_context ?? "";
   return "";
 }
 

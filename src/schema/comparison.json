@@ -46,6 +46,11 @@
                           "$ref": "corpus:defs#/$defs/ipldLink"
                         }
                       },
+                      "if": {
+                        "properties": { "value": { "type": "number" } },
+                        "required": ["value"]
+                      },
+                      "then": { "required": ["benchmark_receipt"] },
                       "additionalProperties": false
                     }
                   }
