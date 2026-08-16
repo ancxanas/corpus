@@ -633,7 +633,7 @@ function queryParameters(): Json[] {
       in: "query",
       required: false,
       description:
-        "Sort field. Prefix with a minus sign for descending order. Sorted descending in all cases.",
+        "Sort field. Sorts ascending; prefix with a minus sign for descending order.",
       schema: { enum: QUERY_SORTABLE },
     },
     {
@@ -649,7 +649,7 @@ function queryParameters(): Json[] {
       in: "query",
       required: false,
       description:
-        "Number of resources to skip. Defaults to 0; offsets past the last page clamp to it.",
+        "Number of resources to skip. Defaults to 0; offsets past the last page return an empty page.",
       schema: { type: "integer", minimum: 0 },
     },
     {
@@ -707,7 +707,7 @@ function receiptParameters(): Json[] {
       in: "query",
       required: false,
       description:
-        "Number of receipts to skip. Defaults to 0; offsets past the last page clamp to it.",
+        "Number of receipts to skip. Defaults to 0; offsets past the last page return an empty page.",
       schema: { type: "integer", minimum: 0 },
     },
   ];
