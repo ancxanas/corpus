@@ -23,8 +23,8 @@ export const QUERY_PAGE_LIMIT_MAX = 100;
 const NAME = "OSK Corpus";
 
 const DESCRIPTION =
-  "Signed, content-addressed knowledge graph of software engineering " +
-  "problems and verified solutions. Nodes are immutable, Ed25519-signed, " +
+  "Signed, content-addressed library of software engineering problems, " +
+  "fixes, and verification receipts. Nodes are immutable, Ed25519-signed, " +
   "and versioned via supersedes_cid.";
 
 const QUERY_EXAMPLE =

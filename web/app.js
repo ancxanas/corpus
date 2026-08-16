@@ -9,24 +9,23 @@ const COLLECTIONS = [
 
 const HERO = {
   all: {
-    title: "A signed library of engineering knowledge",
-    blurb:
-      "Problems, recipes, and guides — every claim linked to a cid-addressable, verifiable record.",
+    title: "Signed engineering notes",
+    blurb: "What broke, how to fix it, and the receipts that back the fix.",
   },
   problems: {
     title: "Problems",
     blurb:
-      "Observed failures with symptoms, reproduction steps, root causes, and linked solutions.",
+      "Failures with symptoms, reproduction steps, root causes, and linked fixes.",
   },
   recipes: {
     title: "Recipes",
     blurb:
-      "Reusable solutions with prerequisites, step-by-step instructions, and verification evidence.",
+      "Fixes with prerequisites, steps, caveats, and verification receipts.",
   },
   guides: {
     title: "Guides",
     blurb:
-      "Curated walkthroughs that connect problems and recipes into coherent knowledge.",
+      "Walkthroughs that connect a failure to its fix and the reasoning between them.",
   },
 };
 
@@ -52,7 +51,7 @@ const state = {
   severity: "",
   search: "",
   sort: "-created_at",
-  limit: 25,
+  limit: 10,
   offset: 0,
   next: null,
   prev: null,
@@ -425,6 +424,10 @@ function skeletonRows() {
 }
 
 function renderPagination() {
+  if (state.total <= state.limit) {
+    pagination.hidden = true;
+    return;
+  }
   pagination.hidden = false;
   const pageNum = Math.floor(state.offset / state.limit) + 1;
   const pageCount = Math.max(1, Math.ceil(state.total / state.limit));
@@ -1045,18 +1048,26 @@ function renderGuide(guide) {
         esc(type)
       } · ${esc(s.verification?.result ?? "unverified")}</span></p>`);
       if (body.explanation) {
-        parts.push(body.explanation.split(/\n\n+/).map((p) =>
-          `<p>${esc(p)}</p>`
-        ).join(""));
+        parts.push(
+          body.explanation.split(/\n\n+/).map((p) => `<p>${esc(p)}</p>`).join(
+            "",
+          ),
+        );
       }
       if (body.steps?.length) parts.push(renderSteps(body.steps));
       if (body.code) {
-        parts.push(`<h3>Implementation</h3>${renderCode(body.code, `guide-sec-${i + 1}`)}`);
+        parts.push(
+          `<h3>Implementation</h3>${
+            renderCode(body.code, `guide-sec-${i + 1}`)
+          }`,
+        );
       }
       if (body.example) {
-        parts.push(`<div class="callout example"><strong>Example</strong><p>${
-          esc(body.example)
-        }</p></div>`);
+        parts.push(
+          `<div class="callout example"><strong>Example</strong><p>${
+            esc(body.example)
+          }</p></div>`,
+        );
       }
     }
   }

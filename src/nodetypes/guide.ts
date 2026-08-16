@@ -10,7 +10,8 @@ export const guideModule: NodeTypeModule = {
   nodeType: "Guide",
   plural: "guides",
   schemaFile: "guide.json",
-  description: "Conceptual and heuristic knowledge with per-claim attestation.",
+  description:
+    "Walkthroughs; each section carries its own claim and attestation.",
   template(publicKey) {
     return {
       osk: {
