@@ -1869,3 +1869,75 @@ Deno.test("POST /agent/query rejects an invalid request body", async () => {
   assertEquals(wrongMethod.status, 405);
   await Deno.remove(dir, { recursive: true });
 });
+
+Deno.test("CORS preflight returns allow headers for an allowed origin", async () => {
+  const { index, ingest, dir } = await makeServer();
+  const handler = createApp(ingest, index, {
+    logger: () => {},
+    corsOrigins: ["https://explorer.example"],
+  });
+  const res = await req(handler, "/agent/query", {
+    method: "OPTIONS",
+    headers: {
+      "Origin": "https://explorer.example",
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type",
+    },
+  });
+  assertEquals(res.status, 204);
+  assertEquals(
+    res.headers.get("access-control-allow-origin"),
+    "https://explorer.example",
+  );
+  assertEquals(
+    res.headers.get("access-control-allow-methods"),
+    "GET, POST, HEAD, OPTIONS",
+  );
+  assertEquals(
+    res.headers.get("access-control-allow-headers"),
+    "Content-Type, Accept",
+  );
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("CORS wildcard echoes any origin on preflight and responses", async () => {
+  const { index, ingest, dir } = await makeServer();
+  const handler = createApp(ingest, index, {
+    logger: () => {},
+    corsOrigins: ["*"],
+  });
+  const pre = await req(handler, "/nodes", {
+    method: "OPTIONS",
+    headers: { "Origin": "https://anything.example" },
+  });
+  assertEquals(pre.status, 204);
+  assertEquals(
+    pre.headers.get("access-control-allow-origin"),
+    "https://anything.example",
+  );
+
+  const get = await req(handler, "/llms.txt", {
+    headers: { "Origin": "https://anything.example" },
+  });
+  assertEquals(get.status, 200);
+  assertEquals(
+    get.headers.get("access-control-allow-origin"),
+    "https://anything.example",
+  );
+  assertEquals(get.headers.get("vary"), "Origin");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("CORS adds no headers for a disallowed origin", async () => {
+  const { index, ingest, dir } = await makeServer();
+  const handler = createApp(ingest, index, {
+    logger: () => {},
+    corsOrigins: ["https://allowed.example"],
+  });
+  const get = await req(handler, "/llms.txt", {
+    headers: { "Origin": "https://blocked.example" },
+  });
+  assertEquals(get.status, 200);
+  assertEquals(get.headers.get("access-control-allow-origin"), null);
+  await Deno.remove(dir, { recursive: true });
+});
