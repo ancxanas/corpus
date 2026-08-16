@@ -1245,4 +1245,13 @@ addEventListener("keyup", (e) => {
 });
 
 addEventListener("hashchange", render);
+
+document.addEventListener("click", (e) => {
+  const a = e.target.closest?.('a[href^="#guide-sec-"]');
+  if (!a) return;
+  e.preventDefault();
+  const el = document.getElementById(a.getAttribute("href").slice(1));
+  el?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
 render();
