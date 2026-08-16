@@ -35,7 +35,9 @@ const DESCRIPTION =
   "advance its lineage; a supersession by another author is quarantined " +
   "as disputed and never becomes the head. The lineage key is the signing " +
   "key: an operator-signed agent output makes the operator the author of " +
-  "record, so agent runs under one operator converge in one lineage.";
+  "record, so agent runs under one operator converge in one lineage. " +
+  "Content is runtime- and language-agnostic; language and framework are " +
+  "free-form labels, not a fixed set.";
 
 const QUERY_EXAMPLE =
   "GET /problems?search=heap%20exhaustion&filter[severity]=critical" +
@@ -158,7 +160,8 @@ export function buildLlmsText(baseUrl: string): string {
     "   measurements as tested.",
     '2. Add `"language": "python"` or `"framework": "deno"` to narrow',
     "   solutions to one stack. By default all solutions come back, each",
-    "   labeled with its language and framework.",
+    "   labeled with its language and framework. Language and framework are",
+    "   free-form labels the author chose, not a fixed set.",
     "3. Every problem and solution carries its CID. Use the CIDs as",
     "   citations: they are checkable, signed, content-addressed nodes.",
     "",

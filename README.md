@@ -24,6 +24,9 @@ JSON:API server. The system follows the OSK Specification v0.3.0 in
 - Index rebuild from stored blocks.
 - CLI for key generation, node authoring, verification, search, and rebuild.
 - Optional sandbox replay of verification test suites.
+- Runtime-agnostic content: any platform, runtime, or language. `language`,
+  `framework`, and `runtime` are free-form labels for filtering, not a fixed
+  set; a node may cover one runtime or several.
 
 ## Requirements
 

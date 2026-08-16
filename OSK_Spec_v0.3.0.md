@@ -17,6 +17,10 @@ structured JSON.
   identity-based.
 - **Agent-native:** The canonical format is structured JSON. Markdown is a
   rendering artifact, not storage.
+- **Runtime-agnostic:** The ontology is platform- and language-agnostic.
+  `language`, `framework`, `runtime`, and `platform` are free-form metadata on
+  payloads, not an enum. Any node may document any runtime, and a node may span
+  several runtimes.
 
 ---
 
@@ -36,6 +40,12 @@ The Corpus recognizes eight first-class node types:
 | `Improvement`  | Incremental optimization or migration plan              | Before/after benchmarks                  |
 | `Blueprint`    | Architectural vision for unifying or evolving systems   | Feasibility analysis + adoption tracking |
 | `Verification` | Signed execution receipts linking a Problem to a Recipe | Independent execution                    |
+
+None of these types is bound to a platform, runtime, or language. The
+`language`, `framework`, `runtime`, and `platform` values that appear in
+payloads are author-provided metadata used for search and filtering. The index
+treats them as free-form labels, not a fixed set. A node MAY cover any runtime
+or several runtimes.
 
 ### 2.2 Core Node Structure
 
@@ -342,6 +352,10 @@ Problem.
   explaining limitations.
 - If `verification.type` is `source_attestation`, the claim MUST include
   `attested_source`.
+
+A Guide MAY cover one runtime or several runtimes. Authoring code blocks in one
+language is a quality preference for consistency, not a requirement of this
+specification.
 
 ### 3.5 Reference
 
