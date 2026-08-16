@@ -328,6 +328,105 @@ const ENVELOPE_SCHEMAS: Json = {
       },
     },
   },
+  AgentQueryRequest: {
+    type: "object",
+    required: ["query"],
+    properties: {
+      query: {
+        type: "string",
+        minLength: 1,
+        maxLength: 500,
+        description:
+          "Full-text description of the problem, as in the search= parameter.",
+      },
+      language: {
+        type: "string",
+        description:
+          "Optional. Restricts solutions to recipes written in this language (case-insensitive).",
+      },
+      framework: {
+        type: "string",
+        description:
+          "Optional. Narrows matching problems and restricts solutions to this framework (case-insensitive).",
+      },
+      limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 20,
+        default: 5,
+        description:
+          "Maximum number of matching problems to return. Defaults to 5.",
+      },
+    },
+  },
+  AgentQuerySolution: {
+    type: "object",
+    required: ["cid", "title", "language", "framework", "confidence", "links"],
+    properties: {
+      cid: { type: "string" },
+      node_id: { type: "string" },
+      title: { type: "string" },
+      summary: { type: "string" },
+      language: { type: "string" },
+      framework: { type: ["string", "null"] },
+      confidence: { type: "number", minimum: 0, maximum: 1 },
+      status: { enum: EFFECTIVE_STATUS },
+      last_verified: { type: "string", format: "date-time" },
+      applies_to: { type: ["string", "null"] },
+      explanation: { type: "string" },
+      steps: { type: "array" },
+      code: { type: "object" },
+      caveats: { type: "array" },
+      links: {
+        type: "object",
+        required: ["self", "receipts"],
+        properties: {
+          self: { type: "string", format: "uri-reference" },
+          receipts: { type: "string", format: "uri-reference" },
+        },
+      },
+    },
+  },
+  AgentQueryDocument: {
+    type: "object",
+    required: ["jsonapi", "meta"],
+    properties: {
+      jsonapi: { $ref: "#/components/schemas/JsonApiVersion" },
+      meta: {
+        type: "object",
+        required: ["query", "matched_problems", "total_solutions_considered"],
+        properties: {
+          query: { type: "string" },
+          language: { type: "string" },
+          framework: { type: "string" },
+          matched_problems: { type: "integer" },
+          total_solutions_considered: { type: "integer" },
+          best: {
+            type: ["object", "null"],
+            required: ["problem_cid", "solution_cid"],
+            properties: {
+              problem_cid: { type: "string" },
+              solution_cid: { type: "string" },
+            },
+          },
+        },
+      },
+      data: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["problem", "solutions"],
+          properties: {
+            problem: { type: "object" },
+            solutions: {
+              type: "array",
+              items: { $ref: "#/components/schemas/AgentQuerySolution" },
+            },
+          },
+        },
+      },
+    },
+  },
 };
 
 const ERROR_RESPONSES: Json = {
@@ -571,6 +670,70 @@ function buildPaths(): Json {
         responses: {
           "200": DOCUMENTED_RESPONSES["200"],
           "406": ERROR_RESPONSES["406"],
+        },
+      },
+    },
+    "/agent/query": {
+      post: {
+        tags: ["agent"],
+        summary:
+          "Answer a question in one call: match problems and rank their solutions.",
+        description:
+          "Plain JSON task endpoint. Searches active problems by keyword, " +
+          "loads their linked solution recipes, ranks them by confidence " +
+          "and status, and points at the single best solution. Returns " +
+          "problem and solution CIDs as citations so the agent can open, " +
+          "verify, or reuse the nodes.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AgentQueryRequest" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description:
+              "Matched problems with ranked solutions and the best pick.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/AgentQueryDocument" },
+              },
+            },
+          },
+          "400": {
+            description: "Malformed JSON in the request body.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorDocument" },
+              },
+            },
+          },
+          "413": {
+            description: "The request body exceeds the byte limit.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorDocument" },
+              },
+            },
+          },
+          "415": {
+            description: "The Content-Type header is not application/json.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorDocument" },
+              },
+            },
+          },
+          "422": {
+            description: "The request body failed validation.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorDocument" },
+              },
+            },
+          },
         },
       },
     },

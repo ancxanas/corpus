@@ -34,9 +34,9 @@ const QUERY_EXAMPLE =
   "GET /problems?search=heap%20exhaustion&filter[severity]=critical" +
   "&sort=-confidence_score";
 
-const QUERY_EXAMPLE_RECIPES =
-  "GET /recipes?search=stream&filter[language]=typescript" +
-  "&sort=-confidence_score";
+const AGENT_QUERY_EXAMPLE =
+  "POST /agent/query with Content-Type: application/json and body " +
+  '{"query": "heap exhaustion", "limit": 5}';
 
 const HOW_TO_WRITE =
   "POST /nodes with data.attributes = {osk, payload}. The signature is " +
@@ -63,6 +63,11 @@ const TRUST_MODEL =
   "reputation, so you can recompute trust client-side from the signed, " +
   "content-addressed receipts and apply your own policy.";
 
+const TRUST_MODEL_SHORT =
+  "Confidence reflects replayed verification receipts, weighted by " +
+  "verifier reputation and capped to resist Sybil attacks. The full " +
+  "trust model is in the GET / entrypoint meta.";
+
 export function buildSelfDescription(baseUrl: string): Record<string, unknown> {
   const nodeTypes: Record<string, unknown> = {};
   for (const module of Object.values(registry)) {
@@ -82,6 +87,14 @@ export function buildSelfDescription(baseUrl: string): Record<string, unknown> {
       filters: QUERY_FILTERS,
       sortable: QUERY_SORTABLE,
       page: { limit_max: QUERY_PAGE_LIMIT_MAX },
+    },
+    agent_query: {
+      method: "POST",
+      path: "/agent/query",
+      content_type: "application/json",
+      purpose:
+        "Answer a question in one call: match active problems and rank their solutions by confidence and status.",
+      example: AGENT_QUERY_EXAMPLE,
     },
     how_to_write: HOW_TO_WRITE,
     trust_model: TRUST_MODEL,
@@ -105,32 +118,59 @@ export function buildLlmsText(baseUrl: string): string {
     "",
     `Version: ${OSK_VERSION}`,
     "",
+    "## Agent query endpoint",
+    "",
+    "The fastest way to get an answer is one call to POST /agent/query",
+    "with plain JSON. No JSON:API envelope, no special headers.",
+    "",
+    `1. ${AGENT_QUERY_EXAMPLE}.`,
+    "   The response lists matching problems, ranks their solutions by",
+    "   confidence and status, and sets meta.best to the single best",
+    "   solution to apply first.",
+    '2. Add `"language": "python"` or `"framework": "deno"` to narrow',
+    "   solutions to one stack. By default all solutions come back, each",
+    "   labeled with its language and framework.",
+    "3. Every problem and solution carries its CID. Use the CIDs as",
+    "   citations: they are checkable, signed, content-addressed nodes.",
+    "",
     "## Node types",
     "",
     types,
     "",
     "## Querying",
     "",
-    "Search any collection or the whole index with GET /nodes.",
+    "Search any collection or the whole index with GET /nodes. Keyword",
+    "search (`search=`) matches the title, summary, tags, symptoms, root",
+    "cause, recipe steps, and guide sections.",
     "",
-    "Keyword search (`search=`) matches the title, summary, tags, symptoms,",
-    "root cause, recipe steps, and guide sections.",
-    "",
-    `1. \`GET /problems?search=heap exhaustion&filter[severity]=critical\``,
+    "1. `GET /problems?search=heap exhaustion&filter[severity]=critical`",
     "   — full-text search across problems.",
-    `2. ${QUERY_EXAMPLE_RECIPES}`,
-    "   — search plus filter across recipes.",
-    "3. `GET /nodes?filter[tag]=json&filter[node_type]=problems` — nodes with",
-    "   a specific tag.",
+    "2. `GET /recipes?search=stream&filter[language]=typescript`",
+    "   `&sort=-confidence_score` — search plus filter across recipes.",
+    "3. `GET /nodes?filter[tag]=json&filter[node_type]=problems` — nodes",
+    "   with a specific tag.",
     "4. `GET /nodes/{cid}?include=solutions` — a node with its solutions",
     "   inlined.",
-    "5. `GET /nodes/{cid}/problems` — the problems a recipe solves (reverse",
-    "   lookup).",
+    "5. `GET /nodes/{cid}/problems` — the problems a recipe solves",
+    "   (reverse lookup).",
     "",
     `Follow \`relationships.<name>.links.related\` for linked resources.`,
     `Filters: ${filters}.`,
     `Sort: ${sortable} (prefix \`-\` for descending).`,
     `Pagination: \`page[limit]\` (max ${QUERY_PAGE_LIMIT_MAX}), \`page[offset]\`.`,
+    "",
+    "## Recommended agent flow",
+    "",
+    "For a one-call answer, use POST /agent/query above. For a fuller loop:",
+    "",
+    "1. Discover: GET / and /llms.txt describe the node types, filters, and",
+    "   trust model.",
+    "2. Query: GET /problems?search=...&sort=-confidence_score, then read",
+    "   the top problem with `?include=solutions`.",
+    "3. Check receipts: GET /nodes/{cid}/verifications shows who verified a",
+    "   recipe and with what result.",
+    "4. Cite: reference nodes by CID. Nodes are signed and content-addressed,",
+    "   so any citation is independently checkable.",
     "",
     "## Writing nodes",
     "",
@@ -143,7 +183,7 @@ export function buildLlmsText(baseUrl: string): string {
     "",
     "## Trust model",
     "",
-    TRUST_MODEL,
+    TRUST_MODEL_SHORT,
     "",
     "## Machine-readable",
     "",

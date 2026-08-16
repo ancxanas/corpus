@@ -94,6 +94,7 @@ Deno.test("openapi document contains every documented path", async () => {
   const doc = await (await req(handler, "/openapi.json")).json();
   const expected = [
     "/",
+    "/agent/query",
     "/nodes",
     "/nodes/{cid}",
     "/nodes/{cid}/verifications",
@@ -112,6 +113,7 @@ Deno.test("openapi document contains every documented path", async () => {
   }
   assertEquals(typeof doc.paths["/nodes"].get, "object");
   assertEquals(typeof doc.paths["/nodes"].post, "object");
+  assertEquals(typeof doc.paths["/agent/query"].post, "object");
   await Deno.remove(dir, { recursive: true });
 });
 

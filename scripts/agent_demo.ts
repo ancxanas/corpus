@@ -7,6 +7,7 @@ const QUERY = Deno.env.get("DEMO_QUERY") ?? "heap exhaustion";
 const KEY_FILE = Deno.env.get("DEMO_KEY") ?? "data/peer-key.json";
 const REGISTRY_FILE = Deno.env.get("DEMO_REGISTRY") ?? "data/registry.json";
 const verify = Deno.args.includes("--verify");
+const oneCall = Deno.args.includes("--one-call");
 
 interface ProblemPayload {
   title: string;
@@ -310,8 +311,76 @@ async function verifySolution(winner: RankedSolution): Promise<void> {
   );
 }
 
+interface AgentQueryResult {
+  meta?: {
+    query?: string;
+    matched_problems?: number;
+    total_solutions_considered?: number;
+    best?: { problem_cid?: string; solution_cid?: string } | null;
+  };
+  data?: Array<{
+    problem?: { cid?: string; title?: string; severity?: string };
+    solutions?: Array<{
+      cid?: string;
+      title?: string;
+      confidence?: number;
+      language?: string;
+      framework?: string | null;
+    }>;
+  }>;
+}
+
+async function oneCallQuery(): Promise<void> {
+  say("agent", `POST /agent/query with query="${QUERY}"`);
+  const res = await fetch(`${BASE_URL}/agent/query`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query: QUERY, limit: 5 }),
+  });
+  if (!res.ok) {
+    throw new Error(`POST /agent/query failed (${res.status})`);
+  }
+  const doc = await res.json() as AgentQueryResult;
+  const meta = doc.meta ?? {};
+  const matched = meta.matched_problems ?? 0;
+  warn(
+    `${matched} problem${matched === 1 ? "" : "s"} matched, ` +
+      `${meta.total_solutions_considered ?? 0} solutions considered`,
+  );
+  for (const entry of doc.data ?? []) {
+    const p = entry.problem ?? {};
+    warn(
+      `problem "${p.title ?? "?"}" severity=${p.severity ?? "?"} ` +
+        `(${shortCid(p.cid ?? "")})`,
+    );
+    for (const s of entry.solutions ?? []) {
+      warn(
+        `  ${confidencePct(s.confidence).padStart(4)}  ${s.title ?? s.cid}  ` +
+          `[${s.language ?? "?"}${s.framework ? `, ${s.framework}` : ""}]  ${
+            shortCid(s.cid ?? "")
+          }`,
+      );
+    }
+  }
+  const best = meta.best;
+  if (best?.solution_cid) {
+    say(
+      "agent",
+      `best: ${shortCid(best.solution_cid)} ` +
+        `(problem ${shortCid(best.problem_cid ?? "")})`,
+    );
+  } else {
+    warn("no best solution: no active matching problems or solutions");
+  }
+}
+
 async function main(): Promise<void> {
   await discover();
+  if (oneCall) {
+    await oneCallQuery();
+    say("agent", "done");
+    return;
+  }
   const { solutions } = await findAndReadProblem();
   const ranked = rank(solutions);
   say("agent", "ranking solutions by confidence_score");

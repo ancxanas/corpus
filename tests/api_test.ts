@@ -6,7 +6,7 @@ import { PlaygroundRegistry } from "../src/execution/registry.ts";
 import { TrustedStubReplayExecutor } from "../src/execution/replay.ts";
 import { generateKeyPair } from "../src/core/sign.ts";
 import { createApp } from "../src/api/server.ts";
-import type { Node, ProblemPayload } from "../src/core/types.ts";
+import type { Node, ProblemPayload, RecipePayload } from "../src/core/types.ts";
 import {
   cidOf,
   guideNode,
@@ -412,6 +412,10 @@ Deno.test("GET /llms.txt documents the query surface", async () => {
   assert(text.includes("search="), "llms.txt must document keyword search");
   assert(text.includes("filter[tag]"), "llms.txt must document tag filter");
   assert(text.includes("/openapi.json"), "llms.txt must link the OpenAPI doc");
+  assert(
+    text.includes("/agent/query"),
+    "llms.txt must document the agent query endpoint",
+  );
   await Deno.remove(dir, { recursive: true });
 });
 
@@ -1391,5 +1395,285 @@ Deno.test("fresh untrusted keys get zero weight and cannot raise confidence", as
   assertEquals(body.data.meta.provenance.has_trusted_verifier, true);
   assertEquals(body.data.meta.provenance.replayed_count, 3);
   assertEquals(body.data.meta.provenance.distinct_keys, 3);
+  await Deno.remove(dir, { recursive: true });
+});
+
+function recipeNodeCustom(
+  pubKey: string,
+  options: { title?: string; language?: string; framework?: string } = {},
+): Node<RecipePayload> {
+  const base = recipeNode(pubKey);
+  if (options.title !== undefined) {
+    base.payload.recipe.title = options.title;
+  }
+  if (options.language !== undefined) {
+    base.payload.recipe.code.language = options.language;
+  }
+  if (options.framework !== undefined) {
+    base.payload.recipe.code.framework = options.framework;
+  }
+  return base;
+}
+
+async function makeAgentServer() {
+  const dir = tempDir();
+  const authorKey = generateKeyPair();
+  const verifierKey = generateKeyPair();
+  const reviewerKey = generateKeyPair();
+  const index = new SqliteNodeStore(`${dir}/index.db`, {
+    trustedKeys: [verifierKey.publicKeyHex, reviewerKey.publicKeyHex],
+  });
+  await index.init();
+  const registry = new PlaygroundRegistry(
+    ["a", "b", "d", "e"].map((letter) => ({
+      environment_hash: letter.repeat(64),
+      playground: "sandbox-den",
+      platform: "linux",
+      version: "1.0",
+      config_hash: `cfg-${letter}`,
+    })),
+  );
+  const ingest = new IngestService(
+    new FileBlockstore({ dir: `${dir}/blocks` }),
+    index,
+    registry,
+    new TrustedStubReplayExecutor(),
+  );
+  const handler = createApp(ingest, index, {
+    logger: () => {},
+    registry,
+  });
+  return {
+    handler,
+    ingest,
+    authorKey,
+    verifierKey,
+    reviewerKey,
+    dir,
+  };
+}
+
+async function queryPost(
+  handler: (request: Request) => Promise<Response>,
+  body: unknown,
+) {
+  return await req(handler, "/agent/query", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+Deno.test("POST /agent/query returns a matched problem with ranked solutions", async () => {
+  const { handler, problemCid, recipeCid, dir } = await makeServer();
+  const res = await queryPost(handler, { query: "recursion" });
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  assertEquals(
+    res.headers.get("content-type")?.includes("application/json"),
+    true,
+  );
+  assertEquals(body.meta.query, "recursion");
+  assertEquals(body.meta.matched_problems, 1);
+  assertEquals(body.meta.total_solutions_considered, 1);
+  assertEquals(body.meta.best, {
+    problem_cid: problemCid,
+    solution_cid: recipeCid,
+  });
+  const entry = body.data[0];
+  assertEquals(entry.problem.cid, problemCid);
+  assert(entry.problem.title.includes("crashes"));
+  assertEquals(
+    entry.problem.links.self,
+    `http://127.0.0.1/nodes/${problemCid}`,
+  );
+  const solution = entry.solutions[0];
+  assertEquals(solution.cid, recipeCid);
+  assertEquals(solution.title, "Replace recursion with an explicit stack");
+  assertEquals(solution.language, "typescript");
+  assertEquals(solution.framework, "deno");
+  assertEquals(solution.confidence, 0.5);
+  assertEquals(solution.status, "active");
+  assertEquals(solution.applies_to, null);
+  assertEquals(solution.links.self, `http://127.0.0.1/nodes/${recipeCid}`);
+  assertEquals(
+    solution.links.receipts,
+    `http://127.0.0.1/nodes/${recipeCid}/verifications`,
+  );
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("POST /agent/query ranks higher-confidence solutions first", async () => {
+  const { handler, ingest, authorKey, verifierKey, reviewerKey, dir } =
+    await makeAgentServer();
+  const recipeA = signed(
+    recipeNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
+  const recipeACid = await cidOf(recipeA);
+  await ingest.ingestNode(recipeA);
+  const recipeB = signed(
+    recipeNodeCustom(authorKey.publicKeyHex, {
+      title: "Rewrite the worker with streaming",
+    }),
+    authorKey.secretKeyHex,
+  );
+  const recipeBCid = await cidOf(recipeB);
+  await ingest.ingestNode(recipeB);
+  const problem = signed(
+    problemNode(authorKey.publicKeyHex, {
+      solutionCids: [recipeACid, recipeBCid],
+    }),
+    authorKey.secretKeyHex,
+  );
+  const problemCid = await cidOf(problem);
+  await ingest.ingestNode(problem);
+  await ingest.ingestVerification(
+    signed(
+      verificationNode(
+        verifierKey.publicKeyHex,
+        problemCid,
+        recipeACid,
+        "a".repeat(64),
+      ),
+      verifierKey.secretKeyHex,
+    ),
+  );
+  for (const key of [verifierKey, reviewerKey]) {
+    await ingest.ingestVerification(
+      signed(
+        verificationNode(
+          key.publicKeyHex,
+          problemCid,
+          recipeBCid,
+          "a".repeat(64),
+        ),
+        key.secretKeyHex,
+      ),
+    );
+  }
+
+  const res = await queryPost(handler, { query: "recursion" });
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  const solutions = body.data[0].solutions;
+  assertEquals(
+    solutions[0].cid,
+    recipeBCid,
+    "double-verified recipe must rank first",
+  );
+  assertEquals(solutions[1].cid, recipeACid);
+  assert(
+    solutions[0].confidence > solutions[1].confidence,
+    "confidence must drive the ranking",
+  );
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("POST /agent/query language filter narrows solutions", async () => {
+  const { handler, ingest, authorKey, dir } = await makeAgentServer();
+  const ts = signed(
+    recipeNode(authorKey.publicKeyHex),
+    authorKey.secretKeyHex,
+  );
+  const tsCid = await cidOf(ts);
+  await ingest.ingestNode(ts);
+  const py = signed(
+    recipeNodeCustom(authorKey.publicKeyHex, {
+      title: "Stream the response with a Python generator",
+      language: "python",
+      framework: "flask",
+    }),
+    authorKey.secretKeyHex,
+  );
+  const pyCid = await cidOf(py);
+  await ingest.ingestNode(py);
+  const problem = signed(
+    problemNode(authorKey.publicKeyHex, {
+      solutionCids: [tsCid, pyCid],
+    }),
+    authorKey.secretKeyHex,
+  );
+  const problemCid = await cidOf(problem);
+  await ingest.ingestNode(problem);
+
+  const all = await queryPost(handler, { query: "recursion" });
+  const allBody = await all.json();
+  assertEquals(all.status, 200);
+  assertEquals(allBody.meta.total_solutions_considered, 2);
+  const idsAll = allBody.data[0].solutions.map((s: { cid: string }) => s.cid);
+  assert(
+    idsAll.includes(tsCid),
+    "all solutions returned without a language filter",
+  );
+  assert(idsAll.includes(pyCid));
+
+  const pyOnly = await queryPost(handler, {
+    query: "recursion",
+    language: "python",
+  });
+  const pyBody = await pyOnly.json();
+  assertEquals(pyBody.meta.language, "python");
+  assertEquals(pyBody.meta.total_solutions_considered, 1);
+  assertEquals(pyBody.meta.best, {
+    problem_cid: problemCid,
+    solution_cid: pyCid,
+  });
+  const idsPy = pyBody.data[0].solutions.map((s: { cid: string }) => s.cid);
+  assertEquals(idsPy, [pyCid]);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("POST /agent/query returns an empty result when nothing matches", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await queryPost(handler, { query: "zzzqqqxyz" });
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  assertEquals(body.meta.matched_problems, 0);
+  assertEquals(body.meta.total_solutions_considered, 0);
+  assertEquals(body.meta.best, null);
+  assertEquals(body.data, []);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("POST /agent/query rejects an invalid request body", async () => {
+  const { handler, dir } = await makeServer();
+  const missing = await queryPost(handler, {});
+  const missingBody = await missing.json();
+  assertEquals(missing.status, 422);
+  assertEquals(missingBody.errors[0].status, "422");
+
+  const empty = await queryPost(handler, { query: "   " });
+  assertEquals(empty.status, 422);
+
+  const long = await queryPost(handler, { query: "x".repeat(501) });
+  assertEquals(long.status, 422);
+
+  const badLimit = await queryPost(handler, { query: "recursion", limit: 0 });
+  assertEquals(badLimit.status, 422);
+
+  const malformed = await req(handler, "/agent/query", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{not json",
+  });
+  const malformedBody = await malformed.json();
+  assertEquals(malformed.status, 400);
+  assertEquals(malformedBody.errors[0].title, "invalid JSON");
+
+  const wrongType = await req(handler, "/agent/query", {
+    method: "POST",
+    headers: { "Content-Type": "application/vnd.api+json" },
+    body: JSON.stringify({ query: "recursion" }),
+  });
+  const wrongTypeBody = await wrongType.json();
+  assertEquals(wrongType.status, 415);
+  assertEquals(
+    wrongTypeBody.errors[0].detail,
+    "Content-Type must be application/json.",
+  );
+
+  const wrongMethod = await req(handler, "/agent/query");
+  assertEquals(wrongMethod.status, 405);
   await Deno.remove(dir, { recursive: true });
 });

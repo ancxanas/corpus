@@ -99,8 +99,23 @@ navigation in the sidebar. Open `http://localhost:8000/ui/` to browse it.
 ## Agent walkthrough
 
 The corpus self-describes for agents. Read `GET /llms.txt` or
-`GET /openapi.json` first, then query. A worked agent loop against the seeded
-data:
+`GET /openapi.json` first, then query. The fastest path is the one-call task
+endpoint: it matches problems, ranks their solutions, and points at the best
+fix:
+
+```sh
+curl -X POST http://localhost:8000/agent/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "heap exhaustion", "limit": 5}'
+```
+
+`meta.best` is the single best solution; every problem and solution carries its
+CID as a citation. Add `"language": "python"` or `"framework": "deno"` to narrow
+solutions to one stack (by default all solutions are returned, each labeled with
+its language and framework). The response is plain `application/json`, not
+JSON:API.
+
+The same loop works with the search endpoints directly:
 
 ```sh
 # discover the surface
@@ -122,9 +137,10 @@ with its solutions, ranks the recipes by confidence score, prints the best fix,
 and optionally posts a verification receipt:
 
 ```sh
-deno task start          # in one terminal
-deno task demo           # read-only agent loop
+deno task start              # in one terminal
+deno task demo               # read-only agent loop
 deno task demo -- --verify   # also post a receipt with data/peer-key.json
+deno task demo -- --one-call # the single POST /agent/query call
 ```
 
 `deno task demo` respects `CORPUS_BASE_URL`, `DEMO_QUERY`, `DEMO_KEY`, and
@@ -150,6 +166,8 @@ Key endpoints:
 
 - `GET /nodes` — search with `filter[...]`, `sort`, `page[limit]`,
   `page[offset]`
+- `POST /agent/query` — one-call task endpoint (plain `application/json`): match
+  problems, rank solutions, pick the best
 - `POST /nodes` — create a signed Problem, Recipe, or Guide node
 - `GET /nodes/{cid}` — fetch a node; add `?include=<relationship>` for compound
   documents

@@ -47,6 +47,7 @@ import {
   unsupportedNodeTypeError,
 } from "./http.ts";
 import { buildOpenApiDocument, OPENAPI_MEDIA_TYPE } from "./openapi.ts";
+import { agentQueryHandler } from "./agentquery.ts";
 import {
   buildLlmsText,
   buildSelfDescription,
@@ -320,6 +321,13 @@ export function createApp(
       gate: "accept",
       pattern: pattern("/schemas/:type"),
       handler: (_request, groups, _baseUrl) => getSchema(groups.type!),
+    },
+    {
+      method: "POST",
+      gate: "none",
+      pattern: pattern("/agent/query"),
+      handler: (request, _groups, baseUrl) =>
+        agentQueryHandler(request, baseUrl, store, bodyLimit),
     },
     {
       method: "GET",
