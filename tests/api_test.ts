@@ -1176,20 +1176,26 @@ Deno.test("invalid filter node_type value is rejected", async () => {
   await Deno.remove(dir, { recursive: true });
 });
 
-Deno.test("pagination offset past the total clamps to the last page", async () => {
+Deno.test("pagination offset at or past the total returns an empty page", async () => {
   const { handler, dir } = await makeServer();
   const atTotal = await req(handler, "/nodes?page[limit]=25&page[offset]=2");
   const atBody = await atTotal.json();
-  assertEquals(atBody.data.length, 2);
+  assertEquals(atBody.data.length, 0);
   assertEquals(atBody.meta.total, 2);
   assertEquals(atBody.links.next, null);
-  assertEquals(atBody.links.prev, null);
+  assertEquals(
+    decodeURIComponent(atBody.links.prev),
+    "http://127.0.0.1/nodes?page[limit]=25&page[offset]=0",
+  );
   const overTotal = await req(handler, "/nodes?page[offset]=100");
   const overBody = await overTotal.json();
-  assertEquals(overBody.data.length, 2);
+  assertEquals(overBody.data.length, 0);
   assertEquals(overBody.meta.total, 2);
   assertEquals(overBody.links.next, null);
-  assertEquals(overBody.links.prev, null);
+  assertEquals(
+    decodeURIComponent(overBody.links.prev),
+    "http://127.0.0.1/nodes?page[offset]=75",
+  );
   await Deno.remove(dir, { recursive: true });
 });
 
@@ -1205,11 +1211,11 @@ Deno.test("page[limit]=0 clamps to 1 item", async () => {
   await Deno.remove(dir, { recursive: true });
 });
 
-Deno.test("pagination offset past the end on a paged collection clamps and links correctly", async () => {
+Deno.test("pagination offset past the end on a paged collection returns an empty page and links correctly", async () => {
   const { handler, dir } = await makeServer();
   const res = await req(handler, "/nodes?page[limit]=1&page[offset]=50");
   const body = await res.json();
-  assertEquals(body.data.length, 1);
+  assertEquals(body.data.length, 0);
   assertEquals(body.meta.total, 2);
   assertEquals(
     decodeURIComponent(body.links.last),
@@ -1218,8 +1224,51 @@ Deno.test("pagination offset past the end on a paged collection clamps and links
   assertEquals(body.links.next, null);
   assertEquals(
     decodeURIComponent(body.links.prev),
-    "http://127.0.0.1/nodes?page[limit]=1&page[offset]=0",
+    "http://127.0.0.1/nodes?page[limit]=1&page[offset]=49",
   );
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("out-of-range page[offset] on /verifications returns an empty page", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(
+    handler,
+    "/verifications?page[limit]=1&page[offset]=99",
+  );
+  const body = await res.json();
+  assertEquals(body.data.length, 0);
+  assertEquals(body.meta.total, 1);
+  assertEquals(body.links.next, null);
+  assertEquals(
+    decodeURIComponent(body.links.prev),
+    "http://127.0.0.1/verifications?page[limit]=1&page[offset]=98",
+  );
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("bare sort is ascending and -sort is descending on /nodes", async () => {
+  const { handler, index, authorKey, dir } = await makeServer();
+  const mk = async (title: string, ts: string) => {
+    const node = signed(
+      problemNode(authorKey.publicKeyHex, { title }),
+      authorKey.secretKeyHex,
+    );
+    await index.indexNode(node, await cidOf(node), ts);
+  };
+  await mk("oldest", "2024-01-01T00:00:00.000Z");
+  await mk("middle", "2024-06-01T00:00:00.000Z");
+  await mk("newest", "2025-01-01T00:00:00.000Z");
+  const asc = await req(handler, "/nodes?sort=created_at&page[limit]=100");
+  const desc = await req(handler, "/nodes?sort=-created_at&page[limit]=100");
+  const titleOf = (n: {
+    attributes: { payload: Record<string, { title?: string }> };
+  }) => n.attributes.payload.problem?.title ?? "";
+  const ascTitles = (await asc.json()).data.map(titleOf);
+  const descTitles = (await desc.json()).data.map(titleOf);
+  const only = (titles: string[]) =>
+    titles.filter((t) => ["oldest", "middle", "newest"].includes(t));
+  assertEquals(only(ascTitles), ["oldest", "middle", "newest"]);
+  assertEquals(only(descTitles), ["newest", "middle", "oldest"]);
   await Deno.remove(dir, { recursive: true });
 });
 

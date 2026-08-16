@@ -212,7 +212,10 @@ environment specs keyed by `environment_hash`.
 
 Link derivation precedence: `CORPUS_BASE_URL`, then forwarded headers (only when
 `CORPUS_TRUST_PROXY=1`), then the request origin. Run the API behind Cloudflare
-Tunnel with `CORPUS_TRUST_PROXY=1` so links use `https`.
+Tunnel with `CORPUS_TRUST_PROXY=1` so links use `https`. Set `CORPUS_BASE_URL`
+to a stable origin for permanent citations: without it, self-links and cited
+CIDs carry whatever host each request came in on, and a temporary tunnel URL is
+not a durable citation origin.
 
 ## Security
 

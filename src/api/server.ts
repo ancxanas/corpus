@@ -904,8 +904,7 @@ export function createApp(
       sorted.reverse();
     }
     const lastOffset = Math.max(0, Math.ceil(all.length / limit) - 1) * limit;
-    const clamped = Math.min(offset, lastOffset);
-    const page = sorted.slice(clamped, clamped + limit);
+    const page = sorted.slice(offset, offset + limit);
     const resources = page.map((r) => serializeReceiptWith(r, baseUrl));
 
     const requestUrl = new URL(request.url);
@@ -925,10 +924,10 @@ export function createApp(
     };
     pageLinks.first = setParams(0);
     pageLinks.last = setParams(lastOffset);
-    pageLinks.next = clamped + limit < all.length
-      ? setParams(clamped + limit)
+    pageLinks.next = offset + limit < all.length
+      ? setParams(offset + limit)
       : "";
-    pageLinks.prev = clamped > 0 ? setParams(Math.max(0, clamped - limit)) : "";
+    pageLinks.prev = offset > 0 ? setParams(Math.max(0, offset - limit)) : "";
 
     return jsonResponse(
       document(resources, {
@@ -1015,19 +1014,15 @@ export function createApp(
         400,
       );
     }
-    const sort = (params.get("sort") ?? "-created_at").replace(/^-/, "");
+    const sort = params.get("sort") ?? "-created_at";
     const include = (params.get("include") ?? "").split(",").map((s) =>
       s.trim()
     ).filter(Boolean);
     const search = (params.get("search") ?? "").trim();
 
     const searchOptions = { filter, search, sort, limit, offset };
-    let result = await store.search(searchOptions);
+    const result = await store.search(searchOptions);
     const lastOffset = Math.max(0, Math.ceil(result.total / limit) - 1) * limit;
-    const clamped = Math.min(offset, lastOffset);
-    if (clamped !== offset) {
-      result = await store.search({ ...searchOptions, offset: clamped });
-    }
     const resources = [];
     for (const n of result.data) {
       const relationships = await extractRelationships(
@@ -1106,10 +1101,10 @@ export function createApp(
     };
     pageLinks.first = setParams(0);
     pageLinks.last = setParams(lastOffset);
-    pageLinks.next = clamped + limit < result.total
-      ? setParams(clamped + limit)
+    pageLinks.next = offset + limit < result.total
+      ? setParams(offset + limit)
       : "";
-    pageLinks.prev = clamped > 0 ? setParams(Math.max(0, clamped - limit)) : "";
+    pageLinks.prev = offset > 0 ? setParams(Math.max(0, offset - limit)) : "";
 
     return jsonResponse(
       document(resources, {

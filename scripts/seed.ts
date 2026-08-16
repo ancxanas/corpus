@@ -414,7 +414,7 @@ const recipeMem = recipeNode(ID(2), author.publicKeyHex, {
       "from collections import OrderedDict\n\npool = OrderedDict()\nMAX = 1024\nfor item in items:\n    pool[item.id] = item\n    if len(pool) > MAX:\n        pool.popitem(last=False)",
   },
   explanation:
-    "Keep a fixed-size LRU pool per worker so retained objects cannot grow without bound.",
+    "Keep a fixed-size FIFO eviction pool per worker so retained objects cannot grow without bound.",
   prerequisites: [
     {
       description: "Each worker keeps its own pool; no shared state.",
@@ -441,11 +441,10 @@ const recipeMem = recipeNode(ID(2), author.publicKeyHex, {
       warning: "raise the cap deliberately; eviction silently drops old items.",
     },
   ],
-  tags: ["memory", "workers", "lru"],
+  tags: ["memory", "workers", "fifo"],
   references: [{
-    title: "MDN: Map",
-    url:
-      "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map",
+    title: "Python: collections — container datatypes",
+    url: "https://docs.python.org/3/library/collections.html",
   }],
 });
 
@@ -2008,7 +2007,7 @@ const guideConfidence = guideNode(ID(17), author.publicKeyHex, {
   ],
   caveats: [
     {
-      condition: "receipts come from a replay sandbox",
+      condition: "receipts are operator-vouched (trusted-stub)",
       warning:
         "treat them as evidence of the claim, not proof of production behavior.",
     },
@@ -2361,7 +2360,7 @@ const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
           },
         ],
         example:
-          "The diff shows Map instances holding 210MB more after the run, and the retaining path points at a per-request cache that never evicts.",
+          "The diff shows a dict of per-request objects holding 210MB more after the run, and the retaining path points at a per-request cache that never evicts.",
       },
       depth: "advanced",
       verification: {
@@ -2376,7 +2375,7 @@ const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
         "A fixed-size eviction pool keeps per-worker retained objects bounded under sustained load.",
       body: {
         explanation:
-          "Once the diff names a container, the fix is usually a cap. A per-worker pool that inserts without evicting grows with every request; give it a fixed size and evict the oldest entry on insert past the cap. The pool then behaves like an LRU: hot items stay, dead weight is released, and retained memory is bounded by the cap instead of by traffic.\n\nKeep the pool per worker and export its size as a metric, so the cap shows up in monitoring as a flat line rather than something you discover after the fact.",
+          "Once the diff names a container, the fix is usually a cap. A per-worker pool that inserts without evicting grows with every request; give it a fixed size and evict the oldest entry on insert past the cap. The pool then behaves like a FIFO eviction pool: the oldest entries drop when the cap is hit, dead weight is released, and retained memory is bounded by the cap instead of by traffic.\n\nKeep the pool per worker and export its size as a metric, so the cap shows up in monitoring as a flat line rather than something you discover after the fact.",
         code: {
           language: "python",
           framework: "flask",
@@ -2425,21 +2424,21 @@ const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
   ],
   caveats: [
     {
-      condition: "snapshots only cover JS-managed memory",
-      warning: "native buffers may still grow; sample process rss as well.",
+      condition: "snapshots only cover Python-managed memory",
+      warning: "native extensions may still grow; sample process rss as well.",
     },
     {
-      condition: "receipts come from a replay sandbox",
+      condition: "receipts are operator-vouched (trusted-stub)",
       warning: "they verify the recipe, not your production traffic shape.",
     },
   ],
   tags: ["memory", "leaks", "heap", "diagnosis"],
   references: [{
-    title: "Node.js: process.memoryUsage",
-    url: "https://nodejs.org/api/process.html#processmemoryusage",
+    title: "Python: resource module",
+    url: "https://docs.python.org/3/library/resource.html",
   }, {
-    title: "Node.js: Heap profiler",
-    url: "https://nodejs.org/api/heap_profiler.html",
+    title: "Python: tracemalloc module",
+    url: "https://docs.python.org/3/library/tracemalloc.html",
   }],
 });
 

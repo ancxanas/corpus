@@ -638,8 +638,10 @@ export class SqliteNodeStore implements NodeStore {
     }
 
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-    const sortCol = SORT_COLUMNS[options.sort ?? ""] ?? "created_at";
-    const orderSql = `ORDER BY ${sortCol} DESC`;
+    const rawSort = options.sort ?? "-created_at";
+    const ascending = !rawSort.startsWith("-");
+    const sortCol = SORT_COLUMNS[rawSort.replace(/^-/, "")] ?? "created_at";
+    const orderSql = `ORDER BY ${sortCol} ${ascending ? "ASC" : "DESC"}`;
     const total = (await this.#db.prepare(
       `SELECT COUNT(*) AS n FROM nodes ${whereSql}`,
     ).get(...(params as never[])) as { n: number }).n;
