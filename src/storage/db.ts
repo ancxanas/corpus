@@ -82,6 +82,145 @@ CREATE TABLE IF NOT EXISTS node_links (
 CREATE INDEX IF NOT EXISTS idx_node_links_target ON node_links(target_cid);
 `;
 
+const SCHEMA_V6 = `
+CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+  title,
+  summary,
+  tags,
+  body,
+  tokenize = 'porter unicode61'
+);
+`;
+
+export interface FtsFields {
+  title: string;
+  summary: string;
+  tags: string;
+  body: string;
+}
+
+export function ftsFields(node: Node): FtsFields {
+  const payload = node.payload as Record<string, Record<string, unknown>>;
+  const inner = Object.values(payload)[0] as {
+    title?: string;
+    summary?: string;
+    tags?: string[];
+    impact?: string;
+    symptoms?: Array<{ description?: string; observable?: string }>;
+    reproduction?: Array<{ title?: string; body?: string }>;
+    diagnosis?: Array<{ title?: string; body?: string }>;
+    root_cause?: { mechanism?: string; causal_chain?: string[] };
+    explanation?: string;
+    steps?: Array<{ title?: string; body?: string }>;
+    caveats?: Array<{ condition?: string; warning?: string }>;
+    verification?: string;
+    code?: { body?: string };
+    sections?: Array<{
+      heading?: string;
+      claim?: string;
+      body?: {
+        explanation?: string;
+        example?: string;
+        code?: { body?: string };
+      };
+    }>;
+  } | undefined;
+  const parts: string[] = [];
+  const push = (value: unknown): void => {
+    if (typeof value === "string" && value) {
+      parts.push(value);
+    }
+  };
+  push(inner?.impact);
+  for (const s of inner?.symptoms ?? []) {
+    push(s.description);
+    push(s.observable);
+  }
+  for (const s of inner?.reproduction ?? []) {
+    push(s.title);
+    push(s.body);
+  }
+  for (const s of inner?.diagnosis ?? []) {
+    push(s.title);
+    push(s.body);
+  }
+  push(inner?.root_cause?.mechanism);
+  for (const c of inner?.root_cause?.causal_chain ?? []) {
+    push(c);
+  }
+  push(inner?.explanation);
+  for (const s of inner?.steps ?? []) {
+    push(s.title);
+    push(s.body);
+  }
+  for (const c of inner?.caveats ?? []) {
+    push(c.condition);
+    push(c.warning);
+  }
+  push(inner?.verification);
+  push(inner?.code?.body);
+  for (const s of inner?.sections ?? []) {
+    push(s.heading);
+    push(s.claim);
+    push(s.body?.explanation);
+    push(s.body?.example);
+    push(s.body?.code?.body);
+  }
+  return {
+    title: inner?.title ?? "",
+    summary: inner?.summary ?? "",
+    tags: (inner?.tags ?? []).join(" "),
+    body: parts.join(" "),
+  };
+}
+
+function backfillLinks(db: DatabaseSync): void {
+  const rows = db.prepare("SELECT cid, node_json FROM nodes").all() as {
+    cid: string;
+    node_json: string;
+  }[];
+  const stmt = db.prepare(
+    "INSERT OR IGNORE INTO node_links (source_cid, name, target_cid) VALUES (?, ?, ?)",
+  );
+  for (const row of rows) {
+    let node: Node;
+    try {
+      node = JSON.parse(row.node_json) as Node;
+    } catch {
+      continue;
+    }
+    const module = registry[node.osk.node_type];
+    if (!module) {
+      continue;
+    }
+    for (const def of module.relationships(node)) {
+      for (const link of def.links) {
+        stmt.run(row.cid, def.name, link.cid);
+      }
+    }
+  }
+}
+
+function backfillSearchIndex(db: DatabaseSync): void {
+  const rows = db.prepare("SELECT rowid, node_json FROM nodes").all() as {
+    rowid: number;
+    node_json: string;
+  }[];
+  const stmt = db.prepare(
+    "INSERT INTO search_index (rowid, title, summary, tags, body) VALUES (?, ?, ?, ?, ?)",
+  );
+  for (const row of rows) {
+    let node: Node;
+    try {
+      node = JSON.parse(row.node_json) as Node;
+    } catch {
+      continue;
+    }
+    const fields = ftsFields(node);
+    stmt.run(row.rowid, fields.title, fields.summary, fields.tags, fields.body);
+  }
+}
+
 const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
   (db) => {
     db.exec(SCHEMA_V1);
@@ -97,30 +236,11 @@ const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
   },
   (db) => {
     db.exec(SCHEMA_V5);
-    const rows = db.prepare("SELECT cid, node_json FROM nodes").all() as {
-      cid: string;
-      node_json: string;
-    }[];
-    const stmt = db.prepare(
-      "INSERT OR IGNORE INTO node_links (source_cid, name, target_cid) VALUES (?, ?, ?)",
-    );
-    for (const row of rows) {
-      let node: Node;
-      try {
-        node = JSON.parse(row.node_json) as Node;
-      } catch {
-        continue;
-      }
-      const module = registry[node.osk.node_type];
-      if (!module) {
-        continue;
-      }
-      for (const def of module.relationships(node)) {
-        for (const link of def.links) {
-          stmt.run(row.cid, def.name, link.cid);
-        }
-      }
-    }
+    backfillLinks(db);
+  },
+  (db) => {
+    db.exec(SCHEMA_V6);
+    backfillSearchIndex(db);
   },
 ];
 

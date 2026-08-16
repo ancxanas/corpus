@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { migrate } from "./db.ts";
+import { ftsFields, migrate } from "./db.ts";
 import {
   computeConfidence,
   computeEffectiveStatus,
@@ -160,6 +160,7 @@ export class SqliteNodeStore implements NodeStore {
     this.#db.exec("DROP TABLE IF EXISTS verifications");
     this.#db.exec("DROP TABLE IF EXISTS deprecation_triggers");
     this.#db.exec("DROP TABLE IF EXISTS node_links");
+    this.#db.exec("DROP TABLE IF EXISTS search_index");
     this.#db.exec("PRAGMA user_version = 0");
     await migrate(this.#db);
   }
@@ -239,6 +240,7 @@ export class SqliteNodeStore implements NodeStore {
       }
       this.#indexTriggers(node, cid);
       this.#indexLinks(node, cid);
+      this.#indexSearch(node, cid);
       db.exec("COMMIT;");
     } catch (e) {
       rollbackQuietly(db);
@@ -575,6 +577,39 @@ export class SqliteNodeStore implements NodeStore {
       where.push(`${col} = ?`);
       params.push(value);
     }
+
+    const ftsRowIds = new Set<number>();
+    let hasFts = false;
+    const addFts = (ids: Set<number>, mode: "and" | "replace"): void => {
+      if (mode === "replace" || ftsRowIds.size === 0) {
+        for (const id of ids) {
+          ftsRowIds.add(id);
+        }
+        return;
+      }
+      for (const id of [...ftsRowIds]) {
+        if (!ids.has(id)) {
+          ftsRowIds.delete(id);
+        }
+      }
+    };
+    if (options.search) {
+      hasFts = true;
+      addFts(this.#searchIndex(options.search), "replace");
+    }
+    if (f.tag !== undefined) {
+      hasFts = true;
+      addFts(this.#searchIndex(String(f.tag), "tags"), "and");
+    }
+    if (hasFts && ftsRowIds.size === 0) {
+      return { data: [], total: 0 };
+    }
+    if (hasFts) {
+      const ids = [...ftsRowIds];
+      where.push(`rowid IN (${ids.map(() => "?").join(", ")})`);
+      params.push(...ids);
+    }
+
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const sortCol = SORT_COLUMNS[options.sort ?? ""] ?? "created_at";
     const orderSql = `ORDER BY ${sortCol} DESC`;
@@ -627,6 +662,35 @@ export class SqliteNodeStore implements NodeStore {
         stmt.run(cid, def.name, link.cid);
       }
     }
+  }
+
+  #indexSearch(node: Node, cid: string): void {
+    const row = this.#db.prepare("SELECT rowid FROM nodes WHERE cid = ?").get(
+      cid,
+    ) as { rowid: number } | undefined;
+    if (!row) {
+      return;
+    }
+    const fields = ftsFields(node);
+    this.#db.prepare(
+      `INSERT INTO search_index (rowid, title, summary, tags, body)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(row.rowid, fields.title, fields.summary, fields.tags, fields.body);
+  }
+
+  #searchIndex(query: string, column?: string): Set<number> {
+    const tokens = query.split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) {
+      return new Set();
+    }
+    const match = tokens.map((token) => {
+      const quoted = `"${token.replace(/"/g, '""')}"`;
+      return column ? `${column}:${quoted}` : quoted;
+    }).join(" AND ");
+    const rows = this.#db.prepare(
+      "SELECT rowid FROM search_index WHERE search_index MATCH ?",
+    ).all(match) as { rowid: number }[];
+    return new Set(rows.map((r) => r.rowid));
   }
 
   linkedFrom(targetCid: string, name?: string): string[] {

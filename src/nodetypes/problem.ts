@@ -71,6 +71,7 @@ export const problemModule: NodeTypeModule = {
         framework_name: null,
         language: null,
         runtime_name: null,
+        tags: [],
       };
     }
     return {
@@ -78,6 +79,7 @@ export const problemModule: NodeTypeModule = {
       framework_name: node.payload.problem.environment.framework.name,
       language: null,
       runtime_name: node.payload.problem.environment.runtime.type,
+      tags: node.payload.problem.tags ?? [],
     };
   },
   lifecycle(declared) {

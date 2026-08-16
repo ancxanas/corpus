@@ -142,6 +142,112 @@ Deno.test("rebuild recreates node_links from blocks", async () => {
   await Deno.remove(env.dir, { recursive: true });
 });
 
+Deno.test("keyword search matches body and tags across types", async () => {
+  const env = await makeEnv();
+  const customNode = problemNode(env.authorKey.publicKeyHex, {
+    title: "JSON heap exhaustion",
+    solutionCids: [env.recipeCid],
+  }) as ReturnType<typeof problemNode> & {
+    payload: { problem: { tags?: string[] } };
+  };
+  customNode.payload.problem.tags = ["json", "oom"];
+  const custom = signed(customNode, env.authorKey.secretKeyHex);
+  const customCid = await cidOf(custom);
+  await env.ingest.ingestNode(custom);
+
+  const byBody = await env.index.search({
+    filter: {},
+    search: "explicit stack",
+    limit: 25,
+    offset: 0,
+  });
+  assertEquals(
+    byBody.data.map((r) => r.cid).includes(env.recipeCid),
+    true,
+    "recipe body text must be searchable",
+  );
+
+  const byTag = await env.index.search({
+    filter: {},
+    search: "oom",
+    limit: 25,
+    offset: 0,
+  });
+  assertEquals(
+    byTag.data.map((r) => r.cid).includes(customCid),
+    true,
+    "tags must be searchable",
+  );
+
+  const byTitle = await env.index.search({
+    filter: {},
+    search: "heap exhaustion",
+    limit: 25,
+    offset: 0,
+  });
+  assertEquals(
+    byTitle.data.map((r) => r.cid).includes(customCid),
+    true,
+    "title must be searchable",
+  );
+  await Deno.remove(env.dir, { recursive: true });
+});
+
+Deno.test("tag filter restricts and intersects with keyword search", async () => {
+  const env = await makeEnv();
+  const customNode = problemNode(env.authorKey.publicKeyHex, {
+    title: "JSON heap exhaustion",
+    solutionCids: [env.recipeCid],
+  }) as ReturnType<typeof problemNode> & {
+    payload: { problem: { tags?: string[] } };
+  };
+  customNode.payload.problem.tags = ["json"];
+  const custom = signed(customNode, env.authorKey.secretKeyHex);
+  const customCid = await cidOf(custom);
+  await env.ingest.ingestNode(custom);
+
+  const byTag = await env.index.search({
+    filter: { tag: "json" },
+    limit: 25,
+    offset: 0,
+  });
+  assertEquals(byTag.data.map((r) => r.cid), [customCid]);
+
+  const taggedNode = recipeNode(env.authorKey.publicKeyHex) as
+    & ReturnType<
+      typeof recipeNode
+    >
+    & { payload: { recipe: { tags?: string[] } } };
+  taggedNode.payload.recipe.tags = ["json"];
+  const taggedRecipe = signed(taggedNode, env.authorKey.secretKeyHex);
+  await env.ingest.ingestNode(taggedRecipe);
+
+  const both = await env.index.search({
+    filter: { tag: "json" },
+    search: "heap",
+    limit: 25,
+    offset: 0,
+  });
+  assertEquals(
+    both.data.map((r) => r.cid),
+    [customCid],
+    "keyword and tag filters must intersect",
+  );
+  await Deno.remove(env.dir, { recursive: true });
+});
+
+Deno.test("keyword search handles FTS special characters safely", async () => {
+  const env = await makeEnv();
+  const res = await env.index.search({
+    filter: {},
+    search: 'OR NOT (json AND -"oom")',
+    limit: 25,
+    offset: 0,
+  });
+  assertEquals(res.total, 0);
+  await Deno.remove(env.dir, { recursive: true });
+});
+
 Deno.test("recipe with one verification gets confidence 0.5", async () => {
   const env = await makeEnv();
   const receipt = signed(

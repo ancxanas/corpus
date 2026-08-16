@@ -952,12 +952,14 @@ export function createApp(
     const include = (params.get("include") ?? "").split(",").map((s) =>
       s.trim()
     ).filter(Boolean);
+    const search = (params.get("search") ?? "").trim();
 
-    let result = await store.search({ filter, sort, limit, offset });
+    const searchOptions = { filter, search, sort, limit, offset };
+    let result = await store.search(searchOptions);
     const lastOffset = Math.max(0, Math.ceil(result.total / limit) - 1) * limit;
     const clamped = Math.min(offset, lastOffset);
     if (clamped !== offset) {
-      result = await store.search({ filter, sort, limit, offset: clamped });
+      result = await store.search({ ...searchOptions, offset: clamped });
     }
     const resources = [];
     for (const n of result.data) {

@@ -62,6 +62,7 @@ export const recipeModule: NodeTypeModule = {
         framework_name: null,
         language: null,
         runtime_name: null,
+        tags: [],
       };
     }
     return {
@@ -69,6 +70,7 @@ export const recipeModule: NodeTypeModule = {
       framework_name: node.payload.recipe.code.framework ?? null,
       language: node.payload.recipe.code.language,
       runtime_name: null,
+      tags: node.payload.recipe.tags ?? [],
     };
   },
   lifecycle(declared, verified) {

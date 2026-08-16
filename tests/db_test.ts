@@ -20,13 +20,14 @@ Deno.test("migrate creates the schema and sets user_version", () => {
   const version = (db.prepare("PRAGMA user_version").get() as {
     user_version: number;
   }).user_version;
-  assertEquals(version, 5);
+  assertEquals(version, 6);
   for (
     const table of [
       "nodes",
       "verifications",
       "deprecation_triggers",
       "node_links",
+      "search_index",
     ]
   ) {
     assertEquals(tableNames(db).includes(table), true);
@@ -50,7 +51,7 @@ Deno.test("migrate is idempotent on an already-migrated database", () => {
   const version = (db.prepare("PRAGMA user_version").get() as {
     user_version: number;
   }).user_version;
-  assertEquals(version, 5);
+  assertEquals(version, 6);
   db.close();
   Deno.removeSync(path);
 });
@@ -117,9 +118,77 @@ Deno.test("migrate after reset (drop + user_version 0) recreates the tables", ()
   const version = (db.prepare("PRAGMA user_version").get() as {
     user_version: number;
   }).user_version;
-  assertEquals(version, 5);
+  assertEquals(version, 6);
   assertEquals(tableNames(db).includes("nodes"), true);
   assertEquals(tableNames(db).includes("verifications"), true);
+  db.close();
+  Deno.removeSync(path);
+});
+
+Deno.test("migrate backfills search_index from existing rows", () => {
+  const path = tempDbPath();
+  const db = new DatabaseSync(path);
+  migrate(db);
+  const node = {
+    osk: {
+      version: "0.3.0",
+      node_type: "Problem",
+      node_id: "n2",
+      knowledge_lifecycle: { status: "active", last_verified: "2024-01-01" },
+      attribution: { public_key: "pk" },
+    },
+    payload: {
+      problem: {
+        title: "Worker heap exhaustion",
+        summary: "Large JSON responses blow up the heap.",
+        tags: ["json", "memory"],
+        symptoms: [{
+          description: "process dies",
+          observable: "OOM",
+          frequency: "always",
+        }],
+        root_cause: {
+          mechanism: "unbounded buffer",
+          causal_chain: ["serialization"],
+        },
+        environment: {
+          runtime: { type: "deno", versions: ["2.x"] },
+          framework: { name: "deno", version: "2.x" },
+        },
+        severity: "critical",
+      },
+    },
+  };
+  db.prepare(
+    `INSERT INTO nodes (cid, node_id, node_type, version_seq, author_public_key,
+       author_declared_status, effective_status, confidence_score, last_verified,
+       created_at, head, node_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    "p2",
+    "n2",
+    "Problem",
+    1,
+    "pk",
+    "active",
+    "active",
+    0,
+    "2024-01-01",
+    "2024-01-01",
+    1,
+    JSON.stringify(node),
+  );
+  db.exec("DROP TABLE IF EXISTS search_index");
+  db.exec("PRAGMA user_version = 5");
+  migrate(db);
+  const hits = db.prepare(
+    "SELECT rowid FROM search_index WHERE search_index MATCH ?",
+  ).all('"heap"');
+  assertEquals(hits.length, 1);
+  const tagHits = db.prepare(
+    "SELECT rowid FROM search_index WHERE search_index MATCH ?",
+  ).all('tags:"json"');
+  assertEquals(tagHits.length, 1);
   db.close();
   Deno.removeSync(path);
 });

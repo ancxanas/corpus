@@ -27,6 +27,7 @@ export interface NodeMeta {
   framework_name: string | null;
   language: string | null;
   runtime_name: string | null;
+  tags: string[];
 }
 
 export interface NodeTypeModule {

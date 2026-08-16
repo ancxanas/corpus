@@ -7,6 +7,7 @@ export const QUERY_FILTERS = [
   "effective_status",
   "severity",
   "title",
+  "tag",
   "public_key",
   "node_id",
   "framework_name",
@@ -30,11 +31,11 @@ const DESCRIPTION =
   "and versioned via supersedes_cid.";
 
 const QUERY_EXAMPLE =
-  "GET /problems?filter[severity]=critical&filter[framework_name]=deno" +
+  "GET /problems?search=heap%20exhaustion&filter[severity]=critical" +
   "&sort=-confidence_score";
 
 const QUERY_EXAMPLE_RECIPES =
-  "GET /recipes?filter[framework_name]=deno&filter[language]=typescript" +
+  "GET /recipes?search=stream&filter[language]=typescript" +
   "&sort=-confidence_score";
 
 const HOW_TO_WRITE =
@@ -112,11 +113,19 @@ export function buildLlmsText(baseUrl: string): string {
     "",
     "Search any collection or the whole index with GET /nodes.",
     "",
-    `1. \`GET /problems?filter[severity]=critical\` — critical problems.`,
+    "Keyword search (`search=`) matches the title, summary, tags, symptoms,",
+    "root cause, recipe steps, and guide sections.",
+    "",
+    `1. \`GET /problems?search=heap exhaustion&filter[severity]=critical\``,
+    "   — full-text search across problems.",
     `2. ${QUERY_EXAMPLE_RECIPES}`,
-    "   — most-confident deno/TypeScript recipes.",
-    "3. `GET /nodes/{cid}?include=solutions` — a node with its solutions",
+    "   — search plus filter across recipes.",
+    "3. `GET /nodes?filter[tag]=json&filter[node_type]=problems` — nodes with",
+    "   a specific tag.",
+    "4. `GET /nodes/{cid}?include=solutions` — a node with its solutions",
     "   inlined.",
+    "5. `GET /nodes/{cid}/problems` — the problems a recipe solves (reverse",
+    "   lookup).",
     "",
     `Follow \`relationships.<name>.links.related\` for linked resources.`,
     `Filters: ${filters}.`,

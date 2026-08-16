@@ -28,6 +28,11 @@ const FILTER_SCHEMAS: Record<string, Json> = {
     type: "string",
     description: "Case-insensitive substring match on the node title.",
   },
+  tag: {
+    type: "string",
+    description:
+      "Matches nodes that carry the tag in their payload (title, summary, symptoms, steps, and guide sections are also searchable via the search parameter).",
+  },
   public_key: { $ref: "#/components/schemas/ed25519PublicKey" },
   node_id: { $ref: "#/components/schemas/uuidv7" },
   framework_name: {
@@ -450,6 +455,14 @@ function queryParameters(): Json[] {
     schema: FILTER_SCHEMAS[name]!,
   }));
   params.push(
+    {
+      name: "search",
+      in: "query",
+      required: false,
+      description:
+        "Full-text keyword search across the title, summary, tags, symptoms, root cause, recipe steps, and guide sections.",
+      schema: { type: "string" },
+    },
     {
       name: "sort",
       in: "query",

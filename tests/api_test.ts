@@ -361,6 +361,60 @@ Deno.test("GET /nodes?filter[title] searches case-insensitively", async () => {
   await Deno.remove(dir, { recursive: true });
 });
 
+Deno.test("GET /nodes?search matches body text across types", async () => {
+  const { handler, problemCid, recipeCid, dir } = await makeServer();
+  const res = await req(handler, "/nodes?search=recursion");
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  const ids = (body.data as { id: string }[]).map((r) => r.id);
+  assert(ids.includes(problemCid), "problem body must be searchable");
+  assert(ids.includes(recipeCid), "recipe body must be searchable");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("collection search= filters by node_type", async () => {
+  const { handler, recipeCid, dir } = await makeServer();
+  const res = await req(handler, "/recipes?search=explicit%20stack");
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  assertEquals(body.meta.total, 1);
+  assertEquals(body.data[0].id, recipeCid);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /nodes?filter[tag] returns tagged nodes only", async () => {
+  const { handler, ingest, authorKey, problemCid, dir } = await makeServer();
+  const tagged = recipeNode(authorKey.publicKeyHex) as
+    & ReturnType<
+      typeof recipeNode
+    >
+    & { payload: { recipe: { tags?: string[] } } };
+  tagged.payload.recipe.tags = ["json"];
+  const taggedSigned = signed(tagged, authorKey.secretKeyHex);
+  const taggedCid = await cidOf(taggedSigned);
+  await ingest.ingestNode(taggedSigned);
+
+  const res = await req(handler, "/nodes?filter[tag]=json");
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  const ids = (body.data as { id: string }[]).map((r) => r.id);
+  assert(ids.includes(taggedCid), "tagged node must match");
+  assert(!ids.includes(problemCid), "untagged node must not match");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /llms.txt documents the query surface", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, "/llms.txt");
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("content-type"), "text/plain; charset=utf-8");
+  const text = await res.text();
+  assert(text.includes("search="), "llms.txt must document keyword search");
+  assert(text.includes("filter[tag]"), "llms.txt must document tag filter");
+  assert(text.includes("/openapi.json"), "llms.txt must link the OpenAPI doc");
+  await Deno.remove(dir, { recursive: true });
+});
+
 Deno.test("GET /nodes/{cid}/verifications returns receipts", async () => {
   const { handler, recipeCid, dir } = await makeServer();
   const res = await req(handler, `/nodes/${recipeCid}/verifications`);

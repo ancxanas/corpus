@@ -26,6 +26,7 @@ export const verificationModule: NodeTypeModule = {
       framework_name: null,
       language: null,
       runtime_name: null,
+      tags: [],
     };
   },
   lifecycle(declared) {

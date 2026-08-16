@@ -58,6 +58,7 @@ export const guideModule: NodeTypeModule = {
         framework_name: null,
         language: null,
         runtime_name: null,
+        tags: [],
       };
     }
     const section = node.payload.guide.sections.find((s) => s.body.code);
@@ -67,6 +68,7 @@ export const guideModule: NodeTypeModule = {
       framework_name: code?.framework ?? null,
       language: code?.language ?? null,
       runtime_name: null,
+      tags: node.payload.guide.tags ?? [],
     };
   },
   lifecycle(declared) {

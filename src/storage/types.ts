@@ -70,11 +70,13 @@ export interface SearchFilter {
   severity?: string;
   framework_name?: string;
   title?: string;
+  tag?: string;
   [key: string]: unknown;
 }
 
 export interface SearchOptions {
   filter: SearchFilter;
+  search?: string;
   sort?: string;
   limit: number;
   offset: number;

@@ -215,7 +215,7 @@ function queryString() {
     params.set("filter[severity]", state.severity);
   }
   if (state.search) {
-    params.set("filter[title]", state.search);
+    params.set("search", state.search);
   }
   params.set("sort", state.sort);
   params.set("page[limit]", String(state.limit));
