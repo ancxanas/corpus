@@ -131,10 +131,16 @@ function typeId(resource) {
 }
 
 function titleOf(resource) {
+  const metaTitle = resource?.meta?.title;
+  if (metaTitle) return metaTitle;
   const payload = resource?.attributes?.payload ?? {};
   if (payload.problem) return payload.problem.title;
   if (payload.recipe) return payload.recipe.title;
   if (payload.guide) return payload.guide.title;
+  if (payload.comparison) return payload.comparison.title;
+  if (payload.reference) return payload.reference.title;
+  if (payload.improvement) return payload.improvement.title;
+  if (payload.blueprint) return payload.blueprint.title;
   if (payload.verification) {
     return `Verification of ${
       shortCid(payload.verification.target?.solution_id?.["/"])

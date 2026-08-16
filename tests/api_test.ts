@@ -354,6 +354,11 @@ Deno.test("relationship include works for new node types", async () => {
   const cmpCid = (await cmpRes.json()).meta.cid as string;
   const cmpNode = await req(handler, `/nodes/${cmpCid}`);
   const cmpBody = await cmpNode.json();
+  assertEquals(
+    cmpBody.data.meta.title,
+    (comparison.payload as { comparison: { title: string } }).comparison.title,
+    "comparison resource must carry its payload title in meta",
+  );
   const benchmarks = cmpBody.data.relationships.benchmarks.data as Array<
     { type: string; id: string }
   >;

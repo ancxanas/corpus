@@ -1,5 +1,5 @@
 import type { IndexedNode } from "../storage/types.ts";
-import { pluralOf } from "../nodetypes/registry.ts";
+import { pluralOf, registry } from "../nodetypes/registry.ts";
 
 export interface JsonApiError {
   status: string;
@@ -46,6 +46,7 @@ export function serializeResource(
     ),
     meta: {
       cid: indexed.cid,
+      title: registry[indexed.node_type].title(indexed.node),
       effective_status: indexed.effective_status,
       confidence_score: indexed.confidence_score,
       created_at: indexed.created_at,
