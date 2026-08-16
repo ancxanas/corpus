@@ -366,6 +366,35 @@ Deno.test("relationship include works for new node types", async () => {
     "benchmark relationship data must resolve to verifications",
   );
 
+  const relRes = await req(handler, `/nodes/${cmpCid}/benchmarks`);
+  const relBody = await relRes.json();
+  assertEquals(relRes.status, 200);
+  assert(
+    relBody.data.some((r: { id: string }) => r.id === receiptCid),
+    "GET /nodes/{cid}/benchmarks must return the benchmark receipt",
+  );
+  assert(
+    relBody.data.some(
+      (r: { attributes: { test_suite?: { passed: number } } }) =>
+        r.attributes.test_suite?.passed === 2,
+    ),
+    "benchmark receipt must serialize like a verification",
+  );
+
+  const incRes = await req(handler, `/nodes/${cmpCid}?include=benchmarks`);
+  const incBody = await incRes.json();
+  assert(
+    (incBody.included ?? []).some((i: { id: string }) => i.id === receiptCid),
+    "single-node include=benchmarks must embed the benchmark receipt",
+  );
+
+  const colRes = await req(handler, "/comparisons?include=benchmarks");
+  const colBody = await colRes.json();
+  assert(
+    (colBody.included ?? []).some((i: { id: string }) => i.id === receiptCid),
+    "collection include=benchmarks must embed the benchmark receipt",
+  );
+
   await Deno.remove(dir, { recursive: true });
 });
 

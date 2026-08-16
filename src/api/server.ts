@@ -378,6 +378,18 @@ export function createApp(
     });
   }
 
+  async function resolveIncluded(
+    cid: string,
+    baseUrl: string,
+  ): Promise<Record<string, unknown> | null> {
+    const node = await store.getNode(cid);
+    if (node) {
+      return serializeResource(node, baseUrl);
+    }
+    const receipt = store.getReceipt(cid);
+    return receipt ? serializeReceiptWith(receipt, baseUrl) : null;
+  }
+
   async function provenanceFor(
     cid: string,
   ): Promise<Record<string, unknown> | null> {
@@ -791,6 +803,7 @@ export function createApp(
       indexed,
       baseUrl,
       include,
+      (cid) => resolveIncluded(cid, baseUrl),
     );
     const resource = await withProvenance(rawResource, indexed);
     return jsonResponse(document(resource, { baseUrl, included }));
@@ -817,10 +830,13 @@ export function createApp(
     const cids = reverse
       ? store.linkedFrom(cid, reverse.forwardName)
       : linkedCidsOf(indexed.node, name);
-    const nodes = (await Promise.all(cids.map((c) => store.getNode(c)))).filter(
-      (n): n is NonNullable<typeof n> => n !== null,
-    );
-    const resources = nodes.map((n) => serializeResource(n, baseUrl));
+    const resources: Record<string, unknown>[] = [];
+    for (const linked of cids) {
+      const resolved = await resolveIncluded(linked, baseUrl);
+      if (resolved) {
+        resources.push(resolved);
+      }
+    }
     return jsonResponse(
       document(resources, {
         baseUrl,
@@ -1075,9 +1091,9 @@ export function createApp(
               continue;
             }
             seen.add(cid);
-            const target = await store.getNode(cid);
+            const target = await resolveIncluded(cid, baseUrl);
             if (target) {
-              included.push(serializeResource(target, baseUrl));
+              included.push(target);
             }
           }
         }

@@ -49,6 +49,7 @@ export async function serializeWithIncludes(
   indexed: IndexedNode,
   baseUrl: string,
   includePaths: string[],
+  resolve?: (cid: string) => Promise<Record<string, unknown> | null>,
 ): Promise<{
   resource: Record<string, unknown>;
   included: Record<string, unknown>[];
@@ -68,11 +69,22 @@ export async function serializeWithIncludes(
         continue;
       }
       seen.add(cid);
-      const target = await store.getNode(cid);
+      const target = resolve
+        ? await resolve(cid)
+        : await resolveNode(store, cid, baseUrl);
       if (target) {
-        included.push(serializeResource(target, baseUrl));
+        included.push(target);
       }
     }
   }
   return { resource, included };
+}
+
+async function resolveNode(
+  store: NodeStore,
+  cid: string,
+  baseUrl: string,
+): Promise<Record<string, unknown> | null> {
+  const target = await store.getNode(cid);
+  return target ? serializeResource(target, baseUrl) : null;
 }
