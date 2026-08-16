@@ -50,7 +50,7 @@ export function problemNode(
           causal_chain: ["recursion", "stack", "crash"],
         },
         environment: {
-          runtime: { type: "node", versions: ["22.x"] },
+          runtime: { type: "deno", versions: ["2.x"] },
           framework: { name: "deno", version: "2.x" },
         },
         ...(options.solutionCids

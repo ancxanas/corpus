@@ -63,6 +63,13 @@ ALTER TABLE verifications ADD COLUMN replayed_by TEXT;
 CREATE INDEX IF NOT EXISTS idx_verif_key ON verifications(public_key);
 `;
 
+const SCHEMA_V4 = `
+ALTER TABLE nodes ADD COLUMN language TEXT;
+ALTER TABLE nodes ADD COLUMN runtime_name TEXT;
+CREATE INDEX IF NOT EXISTS idx_nodes_language ON nodes(language);
+CREATE INDEX IF NOT EXISTS idx_nodes_runtime_name ON nodes(runtime_name);
+`;
+
 const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
   (db) => {
     db.exec(SCHEMA_V1);
@@ -72,6 +79,9 @@ const MIGRATIONS: Array<(db: DatabaseSync) => void> = [
   },
   (db) => {
     db.exec(SCHEMA_V3);
+  },
+  (db) => {
+    db.exec(SCHEMA_V4);
   },
 ];
 

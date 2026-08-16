@@ -51,8 +51,23 @@ export const guideModule: NodeTypeModule = {
   title(node) {
     return isGuide(node) ? node.payload.guide.title : null;
   },
-  meta() {
-    return { severity: null, framework_name: null };
+  meta(node) {
+    if (!isGuide(node)) {
+      return {
+        severity: null,
+        framework_name: null,
+        language: null,
+        runtime_name: null,
+      };
+    }
+    const section = node.payload.guide.sections.find((s) => s.body.code);
+    const code = section?.body.code ?? null;
+    return {
+      severity: null,
+      framework_name: code?.framework ?? null,
+      language: code?.language ?? null,
+      runtime_name: null,
+    };
   },
   lifecycle(declared) {
     return declared === "draft" ? "draft" : "active";

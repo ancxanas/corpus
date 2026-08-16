@@ -20,7 +20,7 @@ Deno.test("migrate creates the schema and sets user_version", () => {
   const version = (db.prepare("PRAGMA user_version").get() as {
     user_version: number;
   }).user_version;
-  assertEquals(version, 3);
+  assertEquals(version, 4);
   for (const table of ["nodes", "verifications", "deprecation_triggers"]) {
     assertEquals(tableNames(db).includes(table), true);
   }
@@ -43,7 +43,7 @@ Deno.test("migrate is idempotent on an already-migrated database", () => {
   const version = (db.prepare("PRAGMA user_version").get() as {
     user_version: number;
   }).user_version;
-  assertEquals(version, 3);
+  assertEquals(version, 4);
   db.close();
   Deno.removeSync(path);
 });
@@ -60,7 +60,7 @@ Deno.test("migrate after reset (drop + user_version 0) recreates the tables", ()
   const version = (db.prepare("PRAGMA user_version").get() as {
     user_version: number;
   }).user_version;
-  assertEquals(version, 3);
+  assertEquals(version, 4);
   assertEquals(tableNames(db).includes("nodes"), true);
   assertEquals(tableNames(db).includes("verifications"), true);
   db.close();

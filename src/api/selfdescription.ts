@@ -10,6 +10,8 @@ export const QUERY_FILTERS = [
   "public_key",
   "node_id",
   "framework_name",
+  "language",
+  "runtime_name",
 ] as const;
 
 export const QUERY_SORTABLE = [
@@ -29,6 +31,10 @@ const DESCRIPTION =
 
 const QUERY_EXAMPLE =
   "GET /problems?filter[severity]=critical&filter[framework_name]=deno" +
+  "&sort=-confidence_score";
+
+const QUERY_EXAMPLE_RECIPES =
+  "GET /recipes?filter[framework_name]=deno&filter[language]=typescript" +
   "&sort=-confidence_score";
 
 const HOW_TO_WRITE =
@@ -107,8 +113,8 @@ export function buildLlmsText(baseUrl: string): string {
     "Search any collection or the whole index with GET /nodes.",
     "",
     `1. \`GET /problems?filter[severity]=critical\` — critical problems.`,
-    "2. `GET /recipes?filter[framework_name]=deno&sort=-confidence_score`",
-    "   — most-confident deno recipes.",
+    `2. ${QUERY_EXAMPLE_RECIPES}`,
+    "   — most-confident deno/TypeScript recipes.",
     "3. `GET /nodes/{cid}?include=solutions` — a node with its solutions",
     "   inlined.",
     "",

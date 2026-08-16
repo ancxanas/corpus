@@ -20,6 +20,8 @@ export interface IndexedNode {
   last_verified: string;
   severity: string | null;
   framework_name: string | null;
+  language: string | null;
+  runtime_name: string | null;
   title: string | null;
   created_at: string;
   head: boolean;

@@ -336,10 +336,10 @@ const recipeMem = recipeNode(ID(2), author.publicKeyHex, {
   summary:
     "Keep a fixed-size eviction pool per worker so retained objects cannot grow without bound.",
   code: {
-    language: "typescript",
-    framework: "deno",
+    language: "python",
+    framework: "flask",
     body:
-      "const pool = new Map();\nconst MAX = 1024;\nfor (const item of items) {\n  pool.set(item.id, item);\n  if (pool.size > MAX) pool.delete(pool.keys().next().value);\n}",
+      "from collections import OrderedDict\n\npool = OrderedDict()\nMAX = 1024\nfor item in items:\n    pool[item.id] = item\n    if len(pool) > MAX:\n        pool.popitem(last=False)",
   },
   explanation:
     "Keep a fixed-size LRU pool per worker so retained objects cannot grow without bound.",
@@ -353,7 +353,7 @@ const recipeMem = recipeNode(ID(2), author.publicKeyHex, {
       title: "Insert with a size cap",
       body:
         "Every insert evicts the oldest entry once the pool exceeds the cap.",
-      code: "if (pool.size > MAX) pool.delete(pool.keys().next().value);",
+      code: "if len(pool) > MAX: pool.popitem(last=False)",
     },
     {
       title: "Track pool size as a metric",
@@ -383,7 +383,7 @@ const recipeConfig = recipeNode(ID(3), author.publicKeyHex, {
     "Merge parsed configuration over built-in defaults and type-check before use, so missing files cannot yield nulls.",
   code: {
     language: "typescript",
-    framework: "deno",
+    framework: "express",
     body:
       "const cfg = { ...DEFAULTS, ...(parsed ?? {}) };\nif (typeof cfg.timeout !== 'number') throw new Error('invalid timeout');",
   },
@@ -480,7 +480,7 @@ const recipeRetriesV1 = recipeNode(
       "Retry failed HTTP calls on a fixed timer, which staggers load poorly under outages.",
     code: {
       language: "typescript",
-      framework: "deno",
+      framework: "express",
       body:
         "for (let attempt = 1; ; attempt++) {\n  const res = await fetch(url, opts);\n  if (res.status < 500 && res.status !== 429) return res;\n  if (attempt >= MAX_ATTEMPTS) throw new Error('retries exhausted');\n  await sleep(FIXED_MS);\n}",
     },
@@ -531,7 +531,7 @@ const recipeRetriesV2 = recipeNode(
       "Double the delay on each retry and add random jitter, so a fleet of clients never retries in lockstep.",
     code: {
       language: "typescript",
-      framework: "deno",
+      framework: "express",
       body:
         "for (let attempt = 1; ; attempt++) {\n  const res = await fetch(url, opts);\n  if (res.status < 500 && res.status !== 429) return res;\n  if (attempt > MAX_ATTEMPTS) throw new Error('retries exhausted');\n  const base = BASE_MS * 2 ** (attempt - 1);\n  const jitter = Math.floor(Math.random() * base * 0.2);\n  await sleep(Math.min(base + jitter, MAX_BACKOFF_MS));\n}",
     },
@@ -733,7 +733,7 @@ const problemCrash = problemNode(
       causal_chain: ["buffering", "memory", "oom-killer", "crash"],
     },
     environment: {
-      runtime: { type: "node", versions: ["22.x"] },
+      runtime: { type: "deno", versions: ["2.x"] },
       framework: { name: "deno", version: "2.x" },
     },
     solutions: [{ node: { "/": rCsv } }],
@@ -786,8 +786,8 @@ const problemLeakV1 = problemNode(
       causal_chain: ["retention", "heap", "growth"],
     },
     environment: {
-      runtime: { type: "node", versions: ["22.x"] },
-      framework: { name: "deno", version: "2.x" },
+      runtime: { type: "python", versions: ["3.12"] },
+      framework: { name: "flask", version: "3.x" },
     },
   },
 );
@@ -835,8 +835,8 @@ const problemLeakV2 = problemNode(
       causal_chain: ["retention", "heap", "growth"],
     },
     environment: {
-      runtime: { type: "node", versions: ["22.x"] },
-      framework: { name: "deno", version: "2.x" },
+      runtime: { type: "python", versions: ["3.12"] },
+      framework: { name: "flask", version: "3.x" },
     },
     solutions: [{ node: { "/": rMem } }],
   },
@@ -885,7 +885,7 @@ const problemNull = problemNode(
     },
     environment: {
       runtime: { type: "node", versions: ["22.x"] },
-      framework: { name: "deno", version: "2.x" },
+      framework: { name: "express", version: "5.x" },
     },
     solutions: [{ node: { "/": rConfig } }],
     tags: ["config", "startup", "null"],
@@ -937,7 +937,7 @@ const problemLegacy = problemNode(
     },
     environment: {
       runtime: { type: "node", versions: ["22.x"] },
-      framework: { name: "deno", version: "2.x" },
+      framework: { name: "express", version: "5.x" },
     },
     tags: ["http", "legacy"],
     references: [{
@@ -988,7 +988,7 @@ const problemTz = problemNode(
       causal_chain: ["local time", "dst", "drift"],
     },
     environment: {
-      runtime: { type: "node", versions: ["22.x"] },
+      runtime: { type: "deno", versions: ["2.x"] },
       framework: { name: "deno", version: "2.x" },
     },
     solutions: [{ node: { "/": rTz } }],
@@ -1043,7 +1043,7 @@ const problemRetries = problemNode(
     },
     environment: {
       runtime: { type: "node", versions: ["22.x"] },
-      framework: { name: "deno", version: "2.x" },
+      framework: { name: "express", version: "5.x" },
     },
     solutions: [{ node: { "/": rRetriesV2 } }],
     tags: ["http", "retries", "backoff", "429"],
@@ -1096,7 +1096,7 @@ const problemDeadlock = problemNode(
       causal_chain: ["queue", "capacity", "backpressure", "deadlock"],
     },
     environment: {
-      runtime: { type: "node", versions: ["22.x"] },
+      runtime: { type: "deno", versions: ["2.x"] },
       framework: { name: "deno", version: "2.x" },
     },
     solutions: [{ node: { "/": rQueue } }],
@@ -1148,7 +1148,7 @@ const problemBinary = problemNode(
       causal_chain: ["decode", "utf8", "replacement", "corruption"],
     },
     environment: {
-      runtime: { type: "node", versions: ["22.x"] },
+      runtime: { type: "deno", versions: ["2.x"] },
       framework: { name: "deno", version: "2.x" },
     },
     solutions: [{ node: { "/": rBinary } }],
@@ -1827,7 +1827,7 @@ const guideRetries = guideNode(ID(19), author.publicKeyHex, {
           "A fixed interval retries on a metronome: every failed client retries at the same moment, over and over, until the outage clears. Exponential backoff doubles the delay after each attempt, so early attempts retry quickly while the load on the failing service drops off dramatically over time. A 60-second outage that would take many synchronized fixed-interval attempts clears in a handful of exponentially spaced ones.\n\nClamp the delay so a long outage does not produce a multi-minute wait: cap each attempt at a configured maximum backoff.",
         code: {
           language: "typescript",
-          framework: "deno",
+          framework: "express",
           body:
             `const res = await fetch(url, opts);\nif (res.status < 500 && res.status !== 429) return res;\nif (attempt > MAX_ATTEMPTS) throw new Error('retries exhausted');\nconst delay = Math.min(BASE_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);\nawait sleep(delay);`,
         },
@@ -1851,7 +1851,7 @@ const guideRetries = guideNode(ID(19), author.publicKeyHex, {
           "Even exponential backoff is synchronized: a fleet of clients that fail together computes the same delays and retries in lockstep, and each retry wave can be big enough to keep the outage alive. Jitter randomizes each wait inside a small window, so clients diverge after the first attempt.\n\nThe recipe randomizes within a fraction of the base delay. The divergence compounds across attempts, which is what flattens the retry waves.",
         code: {
           language: "typescript",
-          framework: "deno",
+          framework: "express",
           body:
             `const base = BASE_MS * 2 ** (attempt - 1);\nconst jitter = Math.floor(Math.random() * base * 0.2);\nawait sleep(Math.min(base + jitter, MAX_BACKOFF_MS));`,
         },
@@ -1875,7 +1875,7 @@ const guideRetries = guideNode(ID(19), author.publicKeyHex, {
           "The server knows its own recovery curve; your client does not. A 429 or 503 response can carry a Retry-After header naming either a duration in seconds or an HTTP date. When it is present, sleep for that long and skip your own backoff for that attempt.\n\nThe header is authoritative for that attempt. It may exceed your computed delay, and overriding it with a shorter local guess is exactly the kind of optimism that keeps outages alive.",
         code: {
           language: "typescript",
-          framework: "deno",
+          framework: "express",
           body:
             `if (res.status === 429 || res.status === 503) {\n  const after = res.headers.get('retry-after');\n  if (after) {\n    await sleep(parseRetryAfter(after));\n    continue;\n  }\n}`,
         },
@@ -1899,7 +1899,7 @@ const guideRetries = guideNode(ID(19), author.publicKeyHex, {
           "A retry re-sends the request. If the first attempt actually succeeded but the response was lost, a non-idempotent retry runs the operation twice: two charges, two emails, two rows. Retry safely by restricting retries to methods the HTTP spec marks idempotent, and by making the handler idempotent with a key the caller sends on every attempt.\n\nThe client generates one idempotency key per logical operation and repeats it on retries, so the server can recognize and deduplicate the duplicate.",
         code: {
           language: "typescript",
-          framework: "deno",
+          framework: "express",
           body:
             `const res = await fetch(url, {\n  method: 'POST',\n  headers: { 'Idempotency-Key': key },\n  body,\n});`,
         },
@@ -1958,12 +1958,12 @@ const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
         "Sampling process RSS across a load run shows whether memory actually grows before you hunt for a cause.",
       body: {
         explanation:
-          "Leak hunts fail when they start from a hunch. The first tool is measurement: run a realistic load pattern and sample process RSS at a fixed interval. A flat series of samples means the growth you saw in the moment was garbage not yet collected; a steady upward slope is the leak.\n\nTake the samples programmatically so the numbers are honest. process.memoryUsage().rss gives the resident set, and collecting it every few seconds for the duration of a load run produces the curve that tells you whether there is anything to diagnose.",
+          "Leak hunts fail when they start from a hunch. The first tool is measurement: run a realistic load pattern and sample process RSS at a fixed interval. A flat series of samples means the growth you saw in the moment was garbage not yet collected; a steady upward slope is the leak.\n\nTake the samples programmatically so the numbers are honest. Reading the resident set of the current process gives the number, and collecting it every few seconds for the duration of a load run produces the curve that tells you whether there is anything to diagnose.",
         code: {
-          language: "typescript",
-          framework: "deno",
+          language: "python",
+          framework: "flask",
           body:
-            "setInterval(() => {\n  const { rss } = process.memoryUsage();\n  log('rss_' + Date.now() + '_' + rss);\n}, 5000);",
+            "import time\n\nwhile True:\n    log('rss_' + str(int(time.time() * 1000)))\n    time.sleep(5)",
         },
         example:
           "A worker that 'leaks' under a 1-hour load shows a flat 90MB line once you sample every 5s; a real retention bug climbs steadily to 400MB+.",
@@ -1971,8 +1971,7 @@ const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
       depth: "beginner",
       verification: {
         type: "source_attestation",
-        attested_source:
-          "https://nodejs.org/api/process.html#processmemoryusage",
+        attested_source: "https://docs.python.org/3/library/resource.html",
         result: "confirmed",
       },
     },
@@ -2005,7 +2004,7 @@ const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
       depth: "advanced",
       verification: {
         type: "source_attestation",
-        attested_source: "https://nodejs.org/api/heap_profiler.html",
+        attested_source: "https://docs.python.org/3/library/tracemalloc.html",
         result: "confirmed",
       },
     },
@@ -2017,10 +2016,10 @@ const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
         explanation:
           "Once the diff names a container, the fix is usually a cap. A per-worker pool that inserts without evicting grows with every request; give it a fixed size and evict the oldest entry on insert past the cap. The pool then behaves like an LRU: hot items stay, dead weight is released, and retained memory is bounded by the cap instead of by traffic.\n\nKeep the pool per worker and export its size as a metric, so the cap shows up in monitoring as a flat line rather than something you discover after the fact.",
         code: {
-          language: "typescript",
-          framework: "deno",
+          language: "python",
+          framework: "flask",
           body:
-            `const pool = new Map();\nconst MAX = 1024;\npool.set(item.id, item);\nif (pool.size > MAX) pool.delete(pool.keys().next().value);\nmetric.pool_size = pool.size;`,
+            "from collections import OrderedDict\n\npool = OrderedDict()\nMAX = 1024\npool[item.id] = item\nif len(pool) > MAX:\n    pool.popitem(last=False)\nmetric.pool_size = len(pool)",
         },
         example:
           "Sustained load keeps the pool metric pinned at 1024 instead of climbing one entry per request.",

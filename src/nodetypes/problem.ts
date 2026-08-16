@@ -66,11 +66,18 @@ export const problemModule: NodeTypeModule = {
   },
   meta(node) {
     if (!isProblem(node)) {
-      return { severity: null, framework_name: null };
+      return {
+        severity: null,
+        framework_name: null,
+        language: null,
+        runtime_name: null,
+      };
     }
     return {
       severity: node.payload.problem.severity,
       framework_name: node.payload.problem.environment.framework.name,
+      language: null,
+      runtime_name: node.payload.problem.environment.runtime.type,
     };
   },
   lifecycle(declared) {

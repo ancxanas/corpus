@@ -30,7 +30,21 @@ const FILTER_SCHEMAS: Record<string, Json> = {
   },
   public_key: { $ref: "#/components/schemas/ed25519PublicKey" },
   node_id: { $ref: "#/components/schemas/uuidv7" },
-  framework_name: { type: "string" },
+  framework_name: {
+    type: "string",
+    description:
+      "Primary technology name (case-insensitive). Problems use environment.framework.name; recipes and guides use their code.framework.",
+  },
+  language: {
+    type: "string",
+    description:
+      "Tree-sitter language identifier from recipe or guide code (case-insensitive).",
+  },
+  runtime_name: {
+    type: "string",
+    description:
+      "Runtime type from problem.environment.runtime (case-insensitive).",
+  },
 };
 
 function rewriteRefs(value: unknown): unknown {

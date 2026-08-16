@@ -21,7 +21,12 @@ export const verificationModule: NodeTypeModule = {
     return null;
   },
   meta() {
-    return { severity: null, framework_name: null };
+    return {
+      severity: null,
+      framework_name: null,
+      language: null,
+      runtime_name: null,
+    };
   },
   lifecycle(declared) {
     return declared;

@@ -938,15 +938,25 @@ Deno.test("bad sort falls back to created_at", async () => {
   await Deno.remove(dir, { recursive: true });
 });
 
-Deno.test("unknown filter fields are ignored", async () => {
+Deno.test("unknown filter fields are rejected", async () => {
   const { handler, dir } = await makeServer();
   const res = await req(
     handler,
     "/nodes?filter[bogus_field]=x&filter[node_type]=problems",
   );
   const body = await res.json();
-  assertEquals(res.status, 200);
-  assertEquals(body.meta.total, 1);
+  assertEquals(res.status, 400);
+  assertEquals(body.errors[0].title, "invalid filter");
+  assertEquals(body.errors[0].source.parameter, "filter[bogus_field]");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("invalid filter node_type value is rejected", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, "/nodes?filter[node_type]=nonsense");
+  const body = await res.json();
+  assertEquals(res.status, 400);
+  assertEquals(body.errors[0].source.parameter, "filter[node_type]");
   await Deno.remove(dir, { recursive: true });
 });
 

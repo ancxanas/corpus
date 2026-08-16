@@ -20,6 +20,8 @@ export interface RelationshipDef {
 export interface NodeMeta {
   severity: string | null;
   framework_name: string | null;
+  language: string | null;
+  runtime_name: string | null;
 }
 
 export interface NodeTypeModule {

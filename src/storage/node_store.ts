@@ -14,6 +14,7 @@ import {
 } from "./triggers.ts";
 import { canonicalString } from "../core/serialize.ts";
 import type { EffectiveStatus, Node, NodeType } from "../core/types.ts";
+import type { NodeMeta } from "../nodetypes/types.ts";
 import { isVerification, registry } from "../nodetypes/registry.ts";
 import {
   type IndexedNode,
@@ -78,9 +79,7 @@ const SORT_COLUMNS: Record<string, string> = {
   confidence_score: "confidence_score",
 };
 
-function extractMeta(
-  node: Node,
-): { severity: string | null; framework_name: string | null } {
+function extractMeta(node: Node): NodeMeta {
   return registry[node.osk.node_type].meta(node);
 }
 
@@ -119,6 +118,8 @@ function rowToIndexedNode(row: Record<string, unknown>): IndexedNode {
     last_verified: row.last_verified as string,
     severity: row.severity as string | null,
     framework_name: row.framework_name as string | null,
+    language: row.language as string | null,
+    runtime_name: row.runtime_name as string | null,
     title: row.title as string | null,
     created_at: row.created_at as string,
     head: (row.head as number) === 1,
@@ -202,8 +203,8 @@ export class SqliteNodeStore implements NodeStore {
       db.prepare(
         `INSERT INTO nodes (cid, node_id, node_type, version_seq, supersedes_cid, author_public_key,
            author_declared_status, effective_status, confidence_score, last_verified,
-           severity, framework_name, title, created_at, head, node_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           severity, framework_name, language, runtime_name, title, created_at, head, node_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         cid,
         nodeId,
@@ -217,6 +218,8 @@ export class SqliteNodeStore implements NodeStore {
         node.osk.knowledge_lifecycle.last_verified,
         meta.severity,
         meta.framework_name,
+        meta.language,
+        meta.runtime_name,
         registry[node.osk.node_type].title(node),
         createdAt,
         0,
@@ -546,8 +549,11 @@ export class SqliteNodeStore implements NodeStore {
       public_key: "author_public_key",
       severity: "severity",
       framework_name: "framework_name",
+      language: "language",
+      runtime_name: "runtime_name",
       title: "title",
     };
+    const nocase = new Set(["framework_name", "language", "runtime_name"]);
     for (const [key, value] of Object.entries(f)) {
       const col = columnMap[key];
       if (col === undefined || value === undefined) {
@@ -556,6 +562,11 @@ export class SqliteNodeStore implements NodeStore {
       if (key === "title") {
         where.push(`${col} LIKE ? COLLATE NOCASE`);
         params.push(`%${String(value)}%`);
+        continue;
+      }
+      if (nocase.has(key)) {
+        where.push(`${col} = ? COLLATE NOCASE`);
+        params.push(value);
         continue;
       }
       where.push(`${col} = ?`);

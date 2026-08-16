@@ -645,6 +645,73 @@ Deno.test("search title does not match recipes by node payload only", async () =
   await Deno.remove(env.dir, { recursive: true });
 });
 
+Deno.test("search filters by framework_name, language, and runtime_name", async () => {
+  const env = await makeEnv();
+  const byFramework = await env.index.search({
+    filter: { framework_name: "deno" },
+    limit: 10,
+    offset: 0,
+  });
+  assertEquals(byFramework.total, 2);
+  const byLanguage = await env.index.search({
+    filter: { language: "typescript" },
+    limit: 10,
+    offset: 0,
+  });
+  assertEquals(byLanguage.total, 1);
+  const byRuntime = await env.index.search({
+    filter: { runtime_name: "deno" },
+    limit: 10,
+    offset: 0,
+  });
+  assertEquals(byRuntime.total, 1);
+  const none = await env.index.search({
+    filter: { language: "python", runtime_name: "deno" },
+    limit: 10,
+    offset: 0,
+  });
+  assertEquals(none.total, 0);
+  await Deno.remove(env.dir, { recursive: true });
+});
+
+Deno.test("search matches framework_name, language, and runtime_name case-insensitively", async () => {
+  const env = await makeEnv();
+  const framework = await env.index.search({
+    filter: { framework_name: "DENO" },
+    limit: 10,
+    offset: 0,
+  });
+  assertEquals(framework.total, 2);
+  const language = await env.index.search({
+    filter: { language: "TypeScript" },
+    limit: 10,
+    offset: 0,
+  });
+  assertEquals(language.total, 1);
+  const runtime = await env.index.search({
+    filter: { runtime_name: "Deno" },
+    limit: 10,
+    offset: 0,
+  });
+  assertEquals(runtime.total, 1);
+  await Deno.remove(env.dir, { recursive: true });
+});
+
+Deno.test("indexed meta carries language and runtime_name", async () => {
+  const env = await makeEnv();
+  const problem = await env.index.getNode(env.problemCid);
+  assertEquals(problem?.severity, "high");
+  assertEquals(problem?.framework_name, "deno");
+  assertEquals(problem?.runtime_name, "deno");
+  assertEquals(problem?.language, null);
+  const recipe = await env.index.getNode(env.recipeCid);
+  assertEquals(recipe?.language, "typescript");
+  assertEquals(recipe?.framework_name, "deno");
+  assertEquals(recipe?.runtime_name, null);
+  assertEquals(recipe?.severity, null);
+  await Deno.remove(env.dir, { recursive: true });
+});
+
 Deno.test("v1 database migrates to v2 and indexes titles", async () => {
   const dir = tempDir();
   const dbPath = `${dir}/index.db`;

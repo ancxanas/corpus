@@ -47,7 +47,11 @@ import {
   unsupportedNodeTypeError,
 } from "./http.ts";
 import { buildOpenApiDocument, OPENAPI_MEDIA_TYPE } from "./openapi.ts";
-import { buildLlmsText, buildSelfDescription } from "./selfdescription.ts";
+import {
+  buildLlmsText,
+  buildSelfDescription,
+  QUERY_FILTERS,
+} from "./selfdescription.ts";
 import { matchRoute, pattern, type RouteEntry } from "./router.ts";
 
 const SPEC_COLLECTIONS = [
@@ -882,18 +886,40 @@ export function createApp(
   ): Promise<Response> {
     const params = new URL(request.url).searchParams;
     const filter: Record<string, unknown> = {};
+    const filterKeys = new Set<string>(QUERY_FILTERS);
+    const invalid: Array<{ key: string; note: string }> = [];
     for (const [key, value] of params) {
       const m = key.match(/^filter\[(.+)\]$/);
       if (m) {
-        if (m[1] === "node_type") {
+        const name = m[1]!;
+        if (!filterKeys.has(name)) {
+          invalid.push({ key: name, note: name });
+          continue;
+        }
+        if (name === "node_type") {
           const t = byPluralOrSingular(value);
-          if (t) {
-            filter.node_type = t;
+          if (!t) {
+            invalid.push({ key: name, note: `${name}=${value}` });
+            continue;
           }
+          filter.node_type = t;
         } else {
-          filter[m[1]!] = value;
+          filter[name] = value;
         }
       }
+    }
+    if (invalid.length > 0) {
+      return jsonResponse(
+        errorDocument([{
+          status: "400",
+          title: "invalid filter",
+          detail: `Unknown or invalid filter${invalid.length > 1 ? "s" : ""}: ${
+            invalid.map((i) => i.note).join(", ")
+          }.`,
+          source: { parameter: `filter[${invalid[0]!.key}]` },
+        }]),
+        400,
+      );
     }
     if (collectionType) {
       const t = byPluralOrSingular(collectionType);

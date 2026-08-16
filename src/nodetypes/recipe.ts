@@ -55,8 +55,21 @@ export const recipeModule: NodeTypeModule = {
   title(node) {
     return isRecipe(node) ? node.payload.recipe.title : null;
   },
-  meta() {
-    return { severity: null, framework_name: null };
+  meta(node) {
+    if (!isRecipe(node)) {
+      return {
+        severity: null,
+        framework_name: null,
+        language: null,
+        runtime_name: null,
+      };
+    }
+    return {
+      severity: null,
+      framework_name: node.payload.recipe.code.framework ?? null,
+      language: node.payload.recipe.code.language,
+      runtime_name: null,
+    };
   },
   lifecycle(declared, verified) {
     if (declared === "draft") {
