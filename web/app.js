@@ -5,9 +5,11 @@ const COLLECTIONS = [
   { id: "problems", label: "Problems" },
   { id: "recipes", label: "Recipes" },
   { id: "guides", label: "Guides" },
+  { id: "references", label: "References" },
   { id: "comparisons", label: "Comparisons" },
+  { id: "improvements", label: "Improvements" },
+  { id: "blueprints", label: "Blueprints" },
 ];
-
 const HERO = {
   all: {
     title: "Signed engineering notes",
@@ -28,10 +30,24 @@ const HERO = {
     blurb:
       "Walkthroughs that connect a failure to its fix and the reasoning between them.",
   },
+  references: {
+    title: "References",
+    blurb: "Factual API and behavior documentation backed by source pointers.",
+  },
   comparisons: {
     title: "Comparisons",
     blurb:
       "Trade-off analyses between verified options, with receipts backing the numbers.",
+  },
+  improvements: {
+    title: "Improvements",
+    blurb:
+      "Phased migration plans with before and after metrics and linked recipes.",
+  },
+  blueprints: {
+    title: "Blueprints",
+    blurb:
+      "Architectural visions with feasibility analysis and adoption trajectories.",
   },
 };
 
@@ -48,8 +64,11 @@ const TYPE_ICON = {
   problems: "alert",
   recipes: "beaker",
   guides: "book",
-  comparisons: "scale",
   verifications: "shield",
+  references: "bookmark",
+  comparisons: "scale",
+  improvements: "trending-up",
+  blueprints: "layers",
 };
 
 const state = {
@@ -63,7 +82,16 @@ const state = {
   next: null,
   prev: null,
   total: 0,
-  counts: { problems: null, recipes: null, guides: null, comparisons: null },
+  counts: {
+    problems: null,
+    recipes: null,
+    guides: null,
+    verifications: null,
+    references: null,
+    comparisons: null,
+    improvements: null,
+    blueprints: null,
+  },
 };
 
 const view = document.getElementById("view");
@@ -154,7 +182,19 @@ function snippetOf(resource) {
   if (payload.problem) return payload.problem.summary ?? "";
   if (payload.recipe) return payload.recipe.summary ?? "";
   if (payload.guide) return payload.guide.summary ?? "";
+  if (payload.verification) {
+    const exec = payload.verification.execution;
+    const suite = exec?.test_suite;
+    return suite ? `${suite.passed}/${suite.total} passed` : "";
+  }
+  if (payload.reference) {
+    return payload.reference.entries?.[0]?.description ?? "";
+  }
   if (payload.comparison) return payload.comparison.decision_context ?? "";
+  if (payload.improvement) return payload.improvement.rationale ?? "";
+  if (payload.blueprint) {
+    return payload.blueprint.proposed_architecture?.core_principle ?? "";
+  }
   return "";
 }
 
@@ -201,6 +241,12 @@ const ICONS = {
     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
   clock:
     `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/></svg>`,
+  bookmark:
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`,
+  "trending-up":
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
+  layers:
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
 };
 
 function icon(name) {
@@ -240,18 +286,35 @@ function queryString() {
 }
 
 async function fetchCounts() {
-  const [problems, recipes, guides, comparisons] = await Promise.all([
+  const [
+    problems,
+    recipes,
+    guides,
+    references,
+    comparisons,
+    improvements,
+    blueprints,
+    verifications,
+  ] = await Promise.all([
     api("/nodes?filter[node_type]=problems&page[limit]=1"),
     api("/nodes?filter[node_type]=recipes&page[limit]=1"),
     api("/nodes?filter[node_type]=guides&page[limit]=1"),
+    api("/nodes?filter[node_type]=references&page[limit]=1"),
     api("/nodes?filter[node_type]=comparisons&page[limit]=1"),
+    api("/nodes?filter[node_type]=improvements&page[limit]=1"),
+    api("/nodes?filter[node_type]=blueprints&page[limit]=1"),
+    api("/verifications?limit=1"),
   ]);
   state.counts = {
     problems: problems.meta?.total ?? 0,
     recipes: recipes.meta?.total ?? 0,
     guides: guides.meta?.total ?? 0,
+    references: references.meta?.total ?? 0,
     comparisons: comparisons.meta?.total ?? 0,
+    improvements: improvements.meta?.total ?? 0,
+    blueprints: blueprints.meta?.total ?? 0,
   };
+  state.receiptCount = verifications.meta?.total ?? 0;
 }
 
 /* ---------- render helpers ---------- */
@@ -347,15 +410,9 @@ function countValue(id) {
 function tabsHtml() {
   const countFor = (id) =>
     id === "all"
-      ? countValue("problems") === "–" ||
-          countValue("recipes") === "–" ||
-          countValue("guides") === "–" ||
-          countValue("comparisons") === "–"
+      ? (Object.keys(state.counts).some((k) => countValue(k) === "–")
         ? "–"
-        : countValue("problems") +
-          countValue("recipes") +
-          countValue("guides") +
-          countValue("comparisons")
+        : Object.keys(state.counts).reduce((sum, k) => sum + countValue(k), 0))
       : countValue(id);
   return `
     <nav class="tabs" aria-label="Knowledge types">
@@ -603,13 +660,18 @@ function bindBrowseControls() {
 }
 
 function chipsHtml() {
-  return `<div class="stat-chips">${
-    COLLECTIONS.filter((c) => c.id !== "all").map((c) => `
+  const chips = COLLECTIONS.filter((c) => c.id !== "all").map((c) => `
       <div class="stat-chip">
         <span class="value">${countValue(c.id)}</span>
         <span class="label">${esc(c.label)}</span>
-      </div>`).join("")
-  }</div>`;
+      </div>`).join("");
+  const receiptChip = state.receiptCount
+    ? `<div class="stat-chip">
+        <span class="value">${state.receiptCount}</span>
+        <span class="label">Receipts</span>
+      </div>`
+    : "";
+  return `<div class="stat-chips">${chips}${receiptChip}</div>`;
 }
 
 function heroBlock() {
@@ -950,8 +1012,14 @@ async function renderDetail(cid) {
       ? renderGuide(payload.guide)
       : payload.verification
       ? renderVerification(payload.verification)
+      : payload.reference
+      ? renderReference(payload.reference)
       : payload.comparison
       ? renderComparison(payload.comparison)
+      : payload.improvement
+      ? renderImprovement(payload.improvement)
+      : payload.blueprint
+      ? renderBlueprint(payload.blueprint)
       : `<p style="color:var(--text-muted)">No readable body.</p>`;
 
     const articleMeta = `
@@ -1355,6 +1423,202 @@ function renderComparison(comparison) {
       </div>`).join("")
   }
   `;
+}
+
+function renderReference(reference) {
+  const entries = reference.entries ?? [];
+  return `
+    <dl class="rows">
+      <dt>Topic</dt><dd>${esc(reference.topic ?? "—")}</dd>
+      <dt>Source</dt><dd>${
+    reference.source?.url
+      ? `<a href="${
+        esc(reference.source.url)
+      }" target="_blank" rel="noreferrer">${
+        esc(reference.source.type ?? "docs")
+      } ${icon("external")}</a>`
+      : esc(reference.source?.type ?? "—")
+  }</dd>
+      <dt>Consistency</dt><dd>${esc(reference.consistency?.result ?? "—")}</dd>
+    </dl>
+    <h2>Entries</h2>
+    ${
+    entries.map((e) => `
+      <div class="recipe-step">
+        <div class="step-title">${
+      esc(e.name)
+    } <span class="mono" style="color:var(--text-muted);font-size:0.8em">${
+      esc(e.kind ?? "")
+    }</span></div>
+        ${e.signature ? `<pre class="codeblock">${esc(e.signature)}</pre>` : ""}
+        <p>${esc(e.description ?? "")}</p>
+        <div style="font-size:0.85em;color:var(--text-muted)">
+          version ${esc(e.version ?? "—")} · ${esc(e.source_pointer ?? "")}
+        </div>
+      </div>`).join("")
+  }`;
+}
+
+function renderImprovement(improvement) {
+  const current = improvement.current_state ?? {};
+  const target = improvement.target_state ?? {};
+  const impl = improvement.implementation ?? {};
+  const validation = improvement.validation ?? {};
+  return `
+    <dl class="rows">
+      <dt>Rationale</dt><dd>${esc(improvement.rationale ?? "—")}</dd>
+      <dt>Approach</dt><dd>${esc(impl.approach ?? "—")}</dd>
+    </dl>
+    <h2>Current state</h2>
+    <p>${esc(current.description ?? "—")}</p>
+    ${
+    current.metrics && Object.keys(current.metrics).length
+      ? `<table class="cases"><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>${
+        Object.entries(current.metrics).map(([k, v]) =>
+          `<tr><td>${esc(k)}</td><td class="mono">${esc(String(v))}</td></tr>`
+        ).join("")
+      }</tbody></table>`
+      : ""
+  }
+    <h2>Target state</h2>
+    <p>${esc(target.description ?? "—")}</p>
+    ${
+    target.expected_metrics && Object.keys(target.expected_metrics).length
+      ? `<table class="cases"><thead><tr><th>Metric</th><th>Expected</th></tr></thead><tbody>${
+        Object.entries(target.expected_metrics).map(([k, v]) =>
+          `<tr><td>${esc(k)}</td><td class="mono">${esc(String(v))}</td></tr>`
+        ).join("")
+      }</tbody></table>`
+      : ""
+  }
+    ${
+    (impl.phases ?? []).length
+      ? `<h2>Phases</h2>${
+        impl.phases.map((p) => `
+          <div class="recipe-step">
+            <span class="step-num">${esc(String(p.phase ?? ""))}</span>
+            <div class="step-body">
+              <div class="step-title">${
+          esc(p.title ?? "")
+        } <span style="color:var(--text-muted);font-size:0.85em">· effort ${
+          esc(p.effort ?? "—")
+        }</span></div>
+            </div>
+          </div>`).join("")
+      }`
+      : ""
+  }
+    ${
+    (improvement.trade_offs ?? []).length
+      ? `<h2>Trade-offs</h2>${
+        improvement.trade_offs.map((t) => `
+          <div class="callout warning">
+            ${icon("warning")}
+            <p><strong>${esc(t.aspect)}</strong> — ${esc(t.downside)}</p>
+            <p style="margin-top:4px;font-size:0.9em;color:var(--text-muted)">Mitigation: ${
+          esc(t.mitigation)
+        }</p>
+          </div>`).join("")
+      }`
+      : ""
+  }
+    ${
+    (validation.benchmark_receipts ?? []).length
+      ? `<h2>Benchmarks</h2><ul>${
+        validation.benchmark_receipts.map((r) =>
+          `<li class="rel-receipt">${cidLinkOrText(r["/"])}</li>`
+        ).join("")
+      }</ul>`
+      : ""
+  }
+    ${
+    validation.success_criteria
+      ? `<dl class="rows"><dt>Success criteria</dt><dd>${
+        esc(validation.success_criteria)
+      }</dd>${
+        validation.verification_plan
+          ? `<dt>Verification plan</dt><dd>${
+            esc(validation.verification_plan)
+          }</dd>`
+          : ""
+      }</dl>`
+      : ""
+  }`;
+}
+
+function renderBlueprint(blueprint) {
+  const landscape = blueprint.current_landscape ?? {};
+  const arch = blueprint.proposed_architecture ?? {};
+  const feasibility = blueprint.feasibility ?? {};
+  const trajectory = blueprint.adoption_trajectory ?? {};
+  return `
+    <dl class="rows">
+      <dt>Rationale</dt><dd>${
+    (blueprint.rationale ?? []).map((r) => esc(r)).join("; ") || "—"
+  }</dd>
+      <dt>Epistemic status</dt><dd>${
+    esc(blueprint.epistemic_status ?? "—")
+  }</dd>
+      <dt>Confidence</dt><dd>${esc(blueprint.confidence ?? "—")}</dd>
+    </dl>
+    <h2>Current landscape</h2>
+    <p style="font-style:italic;color:var(--text-muted)">${
+    esc(landscape.systemic_friction ?? "")
+  }</p>
+    ${
+    (landscape.fragments ?? []).length
+      ? `<table class="cases"><thead><tr><th>Technology</th><th>Purpose</th><th>Limitations</th></tr></thead><tbody>${
+        landscape.fragments.map((f) => `
+          <tr>
+            <td>${esc(f.technology ?? "")}</td>
+            <td>${esc(f.purpose ?? "")}</td>
+            <td>${(f.limitations ?? []).map((l) => esc(l)).join("; ")}</td>
+          </tr>`).join("")
+      }</tbody></table>`
+      : ""
+  }
+    <h2>Proposed architecture</h2>
+    <p style="font-weight:600">${esc(arch.core_principle ?? "")}</p>
+    ${
+    (arch.layers ?? []).length
+      ? `<table class="cases"><thead><tr><th>#</th><th>Name</th><th>Technology</th><th>Responsibility</th></tr></thead><tbody>${
+        arch.layers.map((l) => `
+          <tr>
+            <td class="mono">${esc(String(l.layer ?? ""))}</td>
+            <td>${esc(l.name ?? "")}</td>
+            <td>${esc(l.technology ?? "")}</td>
+            <td>${esc(l.responsibility ?? "")}</td>
+          </tr>`).join("")
+      }</tbody></table>`
+      : ""
+  }
+    <h2>Feasibility</h2>
+    ${
+    (feasibility.blockers ?? []).length
+      ? feasibility.blockers.map((b) => `
+        <div class="callout warning">
+          ${icon("warning")}
+          <p><strong>${esc(b.issue)}</strong> <span class="pill ${
+        esc(b.severity)
+      }">${esc(b.severity)}</span> <span style="color:var(--text-muted)">${
+        esc(b.type)
+      }</span></p>
+        </div>`).join("")
+      : "<p>No known blockers.</p>"
+  }
+    ${
+    (feasibility.enablers ?? []).length
+      ? `<ul>${
+        feasibility.enablers.map((e) => `<li>${esc(e)}</li>`).join("")
+      }</ul>`
+      : ""
+  }
+    <h2>Adoption trajectory</h2>
+    <dl class="rows">
+      <dt>Phase 1</dt><dd>${esc(trajectory.phase_1 ?? "—")}</dd>
+      <dt>Phase 2</dt><dd>${esc(trajectory.phase_2 ?? "—")}</dd>
+      <dt>Phase 3</dt><dd>${esc(trajectory.phase_3 ?? "—")}</dd>
+    </dl>`;
 }
 
 /* ---------- routing ---------- */

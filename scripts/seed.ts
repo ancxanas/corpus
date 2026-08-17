@@ -2,11 +2,14 @@ import { generateKeyPair, signNode } from "../src/core/sign.ts";
 import { computeCid } from "../src/core/cid.ts";
 import { dirname } from "node:path";
 import type {
+  BlueprintPayload,
   ComparisonPayload,
   GuidePayload,
+  ImprovementPayload,
   Node,
   ProblemPayload,
   RecipePayload,
+  ReferencePayload,
   VerificationPayload,
 } from "../src/core/types.ts";
 
@@ -198,6 +201,39 @@ function comparisonNode(
   return {
     osk: osk(nodeId, "Comparison", publicKey, "active"),
     payload: { comparison: payload },
+  };
+}
+
+function referenceNode(
+  nodeId: string,
+  publicKey: string,
+  payload: ReferencePayload["reference"],
+): Node<ReferencePayload> {
+  return {
+    osk: osk(nodeId, "Reference", publicKey, "active"),
+    payload: { reference: payload },
+  };
+}
+
+function improvementNode(
+  nodeId: string,
+  publicKey: string,
+  payload: ImprovementPayload["improvement"],
+): Node<ImprovementPayload> {
+  return {
+    osk: osk(nodeId, "Improvement", publicKey, "active"),
+    payload: { improvement: payload },
+  };
+}
+
+function blueprintNode(
+  nodeId: string,
+  publicKey: string,
+  payload: BlueprintPayload["blueprint"],
+): Node<BlueprintPayload> {
+  return {
+    osk: osk(nodeId, "Blueprint", publicKey, "active"),
+    payload: { blueprint: payload },
   };
 }
 
@@ -2537,6 +2573,203 @@ const comparisonJson = comparisonNode(ID(41), author.publicKeyHex, {
 });
 await ingest("comparisons", comparisonJson);
 
+const referenceJson = referenceNode(ID(42), author.publicKeyHex, {
+  title: "Deno web platform: streaming and JSON responses",
+  topic: "deno",
+  source: {
+    type: "official_docs",
+    url: "https://docs.deno.com/api/web/",
+    synced_at: "2026-08-05T00:00:00Z",
+  },
+  entries: [
+    {
+      name: "ReadableStream",
+      kind: "type",
+      signature: "ReadableStream<R>",
+      description:
+        "A byte stream with backpressure. The source enqueues chunks and signals completion; the consumer reads them incrementally.",
+      version: ">=1.0.0",
+      source_pointer: "https://docs.deno.com/api/web/~/ReadableStream",
+    },
+    {
+      name: "Response",
+      kind: "behavior",
+      signature: "new Response(body?: BodyInit, init?: ResponseInit)",
+      description:
+        "Passing a ReadableStream as the body streams the response; the worker flushes chunks instead of buffering the full payload.",
+      version: ">=1.0.0",
+      source_pointer: "https://docs.deno.com/api/web/~/Response",
+    },
+    {
+      name: "Response.json",
+      kind: "function",
+      signature: "Response.json(data: unknown, init?: ResponseInit): Response",
+      description:
+        "Serializes a single value as a JSON response with the application/json content type.",
+      version: ">=1.0.0",
+      source_pointer: "https://docs.deno.com/api/web/~/Response.json",
+    },
+  ],
+  consistency: {
+    method: "agent_verification",
+    last_checked: "2026-08-05T00:00:00Z",
+    result: "confirmed",
+  },
+});
+await ingest("references", referenceJson);
+
+const improvementJson = improvementNode(
+  ID(43),
+  author.publicKeyHex,
+  {
+    title: "Adopt server-side pagination for the large JSON ingest endpoint",
+    current_state: {
+      description:
+        "The JSON ingest handler serializes the full result set into one response buffer. The worker dies on a large response.",
+      metrics: { verified_suite_checks: 0, large_response_survives: 0 },
+    },
+    target_state: {
+      description:
+        "Every request returns a fixed-size page with a next cursor. The verified suite passes.",
+      expected_metrics: {
+        verified_suite_checks: 2,
+        large_response_survives: 2,
+      },
+    },
+    rationale:
+      "Pagination bounds each response payload, so no single response holds the full result set; clients already follow a next cursor.",
+    implementation: {
+      approach: "incremental",
+      phases: [
+        {
+          phase: 1,
+          title: "Add a page and next cursor to the handler",
+          effort: "M",
+          recipe_links: [{ node: { "/": rJsonPage }, relation: "uses" }],
+        },
+      ],
+    },
+    trade_offs: [
+      {
+        aspect: "response payload bound",
+        downside: "Peak memory still tracks the materialized result set.",
+        mitigation:
+          "Page at the storage layer (keyset or LIMIT OFFSET) so only one window is held at a time.",
+      },
+    ],
+    validation: {
+      success_criteria:
+        "Every requested page returns a bounded payload and the large-response suite passes 2/2.",
+      verification_plan:
+        "Re-run the large-response suite and inspect the per-page payload size.",
+      benchmark_receipts: [{ "/": vJsonBCid }],
+    },
+  },
+);
+await ingest("improvements", improvementJson);
+
+const blueprintJson = blueprintNode(
+  ID(44),
+  author.publicKeyHex,
+  {
+    title: "Unify upload ingestion behind one streaming pipeline",
+    current_landscape: {
+      fragments: [
+        {
+          technology: "deno CSV ingest",
+          purpose: "Parses CSV uploads one row at a time so memory stays flat.",
+          limitations: [
+            "Peak memory still follows the 150MB upload.",
+            "No shared paging contract with the other ingest paths.",
+          ],
+        },
+        {
+          technology: "deno JSON ingest",
+          purpose: "Serializes the result set as JSON for the client.",
+          limitations: [
+            "Buffers the full response body when not streaming.",
+            "Worker dies on large responses without streaming or pagination.",
+          ],
+        },
+        {
+          technology: "deno binary ingest",
+          purpose: "Handles binary uploads and validates them by magic bytes.",
+          limitations: [
+            "No verified streaming serialization yet.",
+            "Uses arrayBuffer instead of a byte stream.",
+          ],
+        },
+      ],
+      systemic_friction:
+        "Three parallel ingest paths each materialize in different ways; memory grows with the result set unless every path is streamed or paged independently.",
+    },
+    proposed_architecture: {
+      core_principle:
+        "One ingest boundary that streams at the edge and pages at the storage layer.",
+      layers: [
+        {
+          layer: 1,
+          name: "ingest boundary",
+          technology: "deno",
+          responsibility:
+            "Accept streaming bodies and bounded pages for every format.",
+        },
+        {
+          layer: 2,
+          name: "serialization",
+          technology: "deno",
+          responsibility:
+            "Stream CSV, JSON, and binary chunks instead of buffering one big payload.",
+        },
+        {
+          layer: 3,
+          name: "storage window",
+          technology: "deno",
+          responsibility:
+            "Page at the storage layer so only one window is held at a time.",
+        },
+      ],
+    },
+    rationale: [
+      "Streaming keeps resident memory flat on large payloads.",
+      "Paging bounds every response payload.",
+      "Both fixes are already verified independently in this corpus.",
+    ],
+    feasibility: {
+      blockers: [
+        {
+          issue: "The binary path has no verified streaming serialization yet.",
+          type: "implementation",
+          severity: "medium",
+        },
+        {
+          issue:
+            "Clients must learn to follow a cursor or consume a streaming body.",
+          type: "social",
+          severity: "medium",
+        },
+      ],
+      enablers: [
+        "Streaming JSON responses keep RSS flat on a 50MB response.",
+        "Server-side pagination bounds the JSON payload.",
+      ],
+    },
+    adoption_trajectory: {
+      phase_1: "Adopt pagination for the JSON ingest endpoint.",
+      phase_2: "Stream the CSV and binary serializers.",
+      phase_3:
+        "Unify behind one ingest boundary with a shared paging contract.",
+    },
+    related_nodes: [
+      { node: { "/": rJsonPage }, relation: "enables" },
+      { node: { "/": rJsonStream }, relation: "enables" },
+    ],
+    epistemic_status: "vision",
+    confidence: "low",
+  },
+);
+await ingest("blueprints", blueprintJson);
+
 console.log(
-  "seed complete: 10 recipes, 10 problems, 5 guides, 1 comparison, 14 verifications",
+  "seed complete: 10 recipes, 10 problems, 5 guides, 3 references, 1 comparison, 1 improvement, 1 blueprint, 14 verifications",
 );

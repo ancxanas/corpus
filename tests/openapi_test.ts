@@ -1,4 +1,9 @@
-import { assertEquals, assertMatch, assertObjectMatch } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertMatch,
+  assertObjectMatch,
+} from "@std/assert";
 import { SqliteNodeStore } from "../src/storage/node_store.ts";
 import { FileBlockstore } from "../src/storage/blockstore.ts";
 import { IngestService } from "../src/storage/ingest.ts";
@@ -127,6 +132,24 @@ Deno.test("openapi document contains every documented path", async () => {
       relationshipParam.schema.enum.includes(name),
       true,
       `relationship enum must include ${name}`,
+    );
+  }
+
+  const allPlurals = [
+    "problems",
+    "recipes",
+    "guides",
+    "verifications",
+    "references",
+    "comparisons",
+    "improvements",
+    "blueprints",
+  ];
+  const docStr = JSON.stringify(doc);
+  for (const plural of allPlurals) {
+    assert(
+      docStr.includes(`"${plural}"`),
+      `openapi document must include node_type ${plural}`,
     );
   }
   await Deno.remove(dir, { recursive: true });

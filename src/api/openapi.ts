@@ -20,7 +20,16 @@ const SEVERITY = ["critical", "high", "medium", "low"];
 const FILTER_SCHEMAS: Record<string, Json> = {
   node_type: {
     type: "string",
-    enum: ["problems", "recipes", "guides", "verifications"],
+    enum: [
+      "problems",
+      "recipes",
+      "guides",
+      "verifications",
+      "references",
+      "comparisons",
+      "improvements",
+      "blueprints",
+    ],
   },
   effective_status: { enum: EFFECTIVE_STATUS },
   severity: { enum: SEVERITY },
@@ -733,7 +742,18 @@ function buildPaths(): Json {
     in: "path",
     required: true,
     description: "The node type, singular or plural.",
-    schema: { enum: ["problems", "recipes", "guides", "verifications"] },
+    schema: {
+      enum: [
+        "problems",
+        "recipes",
+        "guides",
+        "verifications",
+        "references",
+        "comparisons",
+        "improvements",
+        "blueprints",
+      ],
+    },
   };
 
   const paths: Json = {
