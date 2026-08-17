@@ -228,6 +228,44 @@ function titleForIncluded(includedById, cid) {
   return r ? titleOf(r) : shortCid(cid);
 }
 
+function collectPayloadCids(payload) {
+  const cids = new Set();
+  const imp = payload.improvement;
+  if (imp) {
+    for (const phase of (imp.implementation?.phases ?? [])) {
+      for (const rl of (phase.recipe_links ?? [])) {
+        if (rl.node?.["/"]) cids.add(rl.node["/"]);
+      }
+    }
+  }
+  const bp = payload.blueprint;
+  if (bp) {
+    for (const rn of (bp.related_nodes ?? [])) {
+      if (rn.node?.["/"]) cids.add(rn.node["/"]);
+    }
+  }
+  return [...cids];
+}
+
+async function resolvePayloadRefs(payload, includedById) {
+  const cids = collectPayloadCids(payload);
+  const missing = cids.filter((cid) => !includedById.has(cid));
+  if (missing.length === 0) return;
+  const results = await Promise.all(
+    missing.map(async (cid) => {
+      try {
+        const body = await api(`/nodes/${encodeURIComponent(cid)}`);
+        return body.data ?? null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  for (let i = 0; i < missing.length; i++) {
+    if (results[i]) includedById.set(missing[i], results[i]);
+  }
+}
+
 /* ---------- icons ---------- */
 
 const ICONS = {
@@ -1010,6 +1048,9 @@ async function renderDetail(cid) {
     const includedById = new Map(
       (body.included ?? []).map((r) => [r.id, r]),
     );
+
+    await resolvePayloadRefs(payload, includedById);
+    if (token !== renderToken) return;
 
     const [receipts, versions, solvedProblems] = await Promise.all([
       payload.recipe ? fetchReceipts(resource.id) : Promise.resolve([]),
