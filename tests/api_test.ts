@@ -1208,7 +1208,10 @@ Deno.test("trusted proxy headers set the base URL everywhere", async () => {
     assertEquals(llms.includes("https://corpus.example/openapi.json"), true);
 
     const nodes = await (await req(handler, "/nodes", forwarded)).json();
-    assertEquals(nodes.links.self, "https://corpus.example/nodes");
+    assertEquals(
+      decodeURIComponent(nodes.links.self),
+      "https://corpus.example/nodes?page[limit]=25&page[offset]=0",
+    );
     assertEquals(
       nodes.links.first.startsWith("https://corpus.example/nodes"),
       true,
@@ -1219,14 +1222,17 @@ Deno.test("trusted proxy headers set the base URL everywhere", async () => {
     );
 
     const problems = await (await req(handler, "/problems", forwarded)).json();
-    assertEquals(problems.links.self, "https://corpus.example/problems");
+    assertEquals(
+      decodeURIComponent(problems.links.self),
+      "https://corpus.example/problems?page[limit]=25&page[offset]=0",
+    );
 
     const verifications =
       await (await req(handler, "/verifications", forwarded))
         .json();
     assertEquals(
-      verifications.links.self,
-      "https://corpus.example/verifications",
+      decodeURIComponent(verifications.links.self),
+      "https://corpus.example/verifications?page[limit]=25&page[offset]=0",
     );
 
     const searched = await (await req(
@@ -1235,8 +1241,8 @@ Deno.test("trusted proxy headers set the base URL everywhere", async () => {
       forwarded,
     )).json();
     assertEquals(
-      searched.links.self,
-      "https://corpus.example/nodes?search=heap&sort=-confidence_score",
+      decodeURIComponent(searched.links.self),
+      "https://corpus.example/nodes?search=heap&sort=-confidence_score&page[limit]=25&page[offset]=0",
     );
   } finally {
     await index.close();
@@ -1375,10 +1381,9 @@ Deno.test("pagination offset at or past the total returns an empty page", async 
   assertEquals(overBody.data.length, 0);
   assertEquals(overBody.meta.total, 2);
   assertEquals(overBody.links.next, null);
-  assertEquals(
-    decodeURIComponent(overBody.links.prev),
-    "http://127.0.0.1/nodes?page[offset]=75",
-  );
+  const prevUrl = new URL(overBody.links.prev);
+  assertEquals(prevUrl.searchParams.get("page[limit]"), "25");
+  assertEquals(prevUrl.searchParams.get("page[offset]"), "75");
   await Deno.remove(dir, { recursive: true });
 });
 
@@ -1389,7 +1394,7 @@ Deno.test("page[limit]=0 clamps to 1 item", async () => {
   assertEquals(body.data.length, 1);
   assertEquals(
     decodeURIComponent(body.links.next),
-    "http://127.0.0.1/nodes?page[limit]=0&page[offset]=1",
+    "http://127.0.0.1/nodes?page[limit]=1&page[offset]=1",
   );
   await Deno.remove(dir, { recursive: true });
 });
@@ -2171,5 +2176,128 @@ Deno.test("CORS adds no headers for a disallowed origin", async () => {
   });
   assertEquals(get.status, 200);
   assertEquals(get.headers.get("access-control-allow-origin"), null);
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("POST /verifications returns 422 for empty attributes", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, "/verifications", {
+    method: "POST",
+    headers: { "Content-Type": "application/vnd.api+json" },
+    body: JSON.stringify({ data: { type: "verifications", attributes: {} } }),
+  });
+  assertEquals(res.status, 422);
+  const body = await res.json();
+  assertEquals(body.errors[0].status, "422");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("POST /verifications returns 422 for missing osk", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, "/verifications", {
+    method: "POST",
+    headers: { "Content-Type": "application/vnd.api+json" },
+    body: JSON.stringify({
+      data: { type: "verifications", attributes: { payload: {} } },
+    }),
+  });
+  assertEquals(res.status, 422);
+  const body = await res.json();
+  assertEquals(body.errors[0].status, "422");
+  assertEquals(body.errors[0].source.pointer, "/data/attributes/osk");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /nodes/{cid}/{relationship} returns 404 for unknown relationship name", async () => {
+  const { handler, recipeCid, dir } = await makeServer();
+  const res = await req(handler, `/nodes/${recipeCid}/nonsense`);
+  assertEquals(res.status, 404);
+  const body = await res.json();
+  assertEquals(body.errors[0].status, "404");
+  assert(
+    body.errors[0].detail.includes("does not exist"),
+    "error should mention the relationship does not exist",
+  );
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("GET /nodes/{cid}/{relationship} returns 200 for valid relationship name", async () => {
+  const { handler, recipeCid, problemCid, dir } = await makeServer();
+  const res = await req(handler, `/nodes/${recipeCid}/problems`);
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assert(body.data.length > 0, "problems relationship should have data");
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("POST /agent/query excludes superseded non-head nodes", async () => {
+  const { handler, ingest, authorKey, verifierKey, dir } = await makeAgentServer();
+  const nodeId = (await import("../src/core/uuidv7.ts")).uuidv7();
+  const recipeV1 = signed(
+    recipeNode(authorKey.publicKeyHex, { nodeId, title: "old approach" }),
+    authorKey.secretKeyHex,
+  );
+  const recipeV1Cid = await cidOf(recipeV1);
+  await ingest.ingestNode(recipeV1);
+  const recipeV2 = signed(
+    recipeNode(authorKey.publicKeyHex, {
+      nodeId,
+      supersedesCid: recipeV1Cid,
+      title: "new approach",
+    }),
+    authorKey.secretKeyHex,
+  );
+  const recipeV2Cid = await cidOf(recipeV2);
+  await ingest.ingestNode(recipeV2);
+  const problem = signed(
+    problemNode(authorKey.publicKeyHex, {
+      solutionCids: [recipeV1Cid, recipeV2Cid],
+    }),
+    authorKey.secretKeyHex,
+  );
+  const problemCid = await cidOf(problem);
+  await ingest.ingestNode(problem);
+  const receipt = signed(
+    verificationNode(
+      verifierKey.publicKeyHex,
+      problemCid,
+      recipeV2Cid,
+      "e".repeat(64),
+    ),
+    verifierKey.secretKeyHex,
+  );
+  await ingest.ingestVerification(receipt);
+
+  const res = await queryPost(handler, { query: "crashes" });
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  const entry = body.data[0];
+  const solutionCids = entry.solutions.map((s: { cid: string }) => s.cid);
+  assert(
+    !solutionCids.includes(recipeV1Cid),
+    "superseded v1 recipe must not appear in results",
+  );
+  assert(
+    solutionCids.includes(recipeV2Cid),
+    "head v2 recipe must appear in results",
+  );
+  await Deno.remove(dir, { recursive: true });
+});
+
+Deno.test("pagination links use clamped page[limit] instead of raw query param", async () => {
+  const { handler, dir } = await makeServer();
+  const res = await req(handler, "/nodes?page[limit]=0&page[offset]=0");
+  const body = await res.json();
+  assertEquals(res.status, 200);
+  const next = decodeURIComponent(body.links.next);
+  assert(
+    next.includes("page[limit]=1"),
+    `links.next should use clamped limit, got: ${next}`,
+  );
+  const self = decodeURIComponent(body.links.self);
+  assert(
+    self.includes("page[limit]=1"),
+    `links.self should use clamped limit, got: ${self}`,
+  );
   await Deno.remove(dir, { recursive: true });
 });

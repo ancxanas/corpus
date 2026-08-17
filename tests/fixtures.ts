@@ -69,13 +69,21 @@ export function problemNode(
 
 export function recipeNode(
   pubKey: string,
-  options: { deprecationTriggers?: DeprecationTrigger[] } = {},
+  options: {
+    deprecationTriggers?: DeprecationTrigger[];
+    nodeId?: string;
+    supersedesCid?: string;
+    title?: string;
+  } = {},
 ): Node<RecipePayload> {
   return {
     osk: {
       version: "0.3.0",
       node_type: "Recipe",
-      node_id: uuidv7(),
+      node_id: options.nodeId ?? uuidv7(),
+      ...(options.supersedesCid
+        ? { supersedes_cid: { "/": options.supersedesCid } }
+        : {}),
       knowledge_lifecycle: {
         status: "active",
         last_verified: "2026-08-14T00:00:00Z",
@@ -87,7 +95,7 @@ export function recipeNode(
     },
     payload: {
       recipe: {
-        title: "Replace recursion with an explicit stack",
+        title: options.title ?? "Replace recursion with an explicit stack",
         code: {
           language: "typescript",
           framework: "deno",

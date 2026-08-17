@@ -8,7 +8,7 @@ import type { NodeTypeModule } from "./types.ts";
 export function isVerification(
   node: Node,
 ): node is Node<VerificationPayload> {
-  return node.osk.node_type === "Verification";
+  return node.osk?.node_type === "Verification";
 }
 
 export const verificationModule: NodeTypeModule = {

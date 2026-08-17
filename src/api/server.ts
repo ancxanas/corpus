@@ -735,6 +735,19 @@ export function createApp(
       );
     }
     const node = data.attributes as Node;
+    if (!node?.osk) {
+      return jsonResponse(
+        errorDocument([
+          {
+            status: "422",
+            title: "invalid request",
+            detail: "Expected a data.attributes object with osk.",
+            source: { pointer: "/data/attributes/osk" },
+          },
+        ]),
+        422,
+      );
+    }
     if (!isVerification(node)) {
       return jsonResponse(
         errorDocument([
@@ -825,7 +838,23 @@ export function createApp(
         404,
       );
     }
-    const reverse = registry[indexed.node.osk.node_type].reverseRelationships
+    const nodeType = indexed.node.osk.node_type;
+    const forwardNames = registry[nodeType].relationshipNames;
+    const reverseNames = registry[nodeType].reverseRelationships?.map((r) =>
+      r.name
+    ) ?? [];
+    const validNames = new Set([...forwardNames, ...reverseNames]);
+    if (!validNames.has(name)) {
+      return jsonResponse(
+        errorDocument([{
+          status: "404",
+          title: "not found",
+          detail: `The relationship "${name}" does not exist for this node type.`,
+        }]),
+        404,
+      );
+    }
+    const reverse = registry[nodeType].reverseRelationships
       ?.find((r) => r.name === name);
     const cids = reverse
       ? store.linkedFrom(cid, reverse.forwardName)
@@ -925,7 +954,8 @@ export function createApp(
 
     const requestUrl = new URL(request.url);
     const selfUrl = new URL(requestUrl.pathname, baseUrl);
-    selfUrl.search = requestUrl.search;
+    selfUrl.searchParams.set("page[limit]", String(limit));
+    selfUrl.searchParams.set("page[offset]", String(offset));
     const pageLinks: Record<string, string> = {
       first: "",
       last: "",
@@ -934,7 +964,7 @@ export function createApp(
     };
     const setParams = (o: number) => {
       const p = new URL(requestUrl.pathname, baseUrl);
-      p.search = requestUrl.search;
+      p.searchParams.set("page[limit]", String(limit));
       p.searchParams.set("page[offset]", String(o));
       return p.toString();
     };
@@ -1102,7 +1132,11 @@ export function createApp(
 
     const requestUrl = new URL(request.url);
     const selfUrl = new URL(requestUrl.pathname, baseUrl);
-    selfUrl.search = requestUrl.search;
+    for (const [k, v] of requestUrl.searchParams) {
+      selfUrl.searchParams.set(k, v);
+    }
+    selfUrl.searchParams.set("page[limit]", String(limit));
+    selfUrl.searchParams.set("page[offset]", String(offset));
     const pageLinks: Record<string, string> = {
       first: "",
       last: "",
@@ -1111,7 +1145,10 @@ export function createApp(
     };
     const setParams = (o: number) => {
       const p = new URL(requestUrl.pathname, baseUrl);
-      p.search = requestUrl.search;
+      for (const [k, v] of requestUrl.searchParams) {
+        p.searchParams.set(k, v);
+      }
+      p.searchParams.set("page[limit]", String(limit));
       p.searchParams.set("page[offset]", String(o));
       return p.toString();
     };

@@ -170,7 +170,7 @@ async function loadSolutions(
   const out: SolutionView[] = [];
   for (const cid of linkedCidsOf(problemIndexed.node, "solutions")) {
     const target = await store.getNode(cid);
-    if (!target || !isRecipe(target.node)) {
+    if (!target || !isRecipe(target.node) || !target.head) {
       continue;
     }
     const recipe = target.node.payload.recipe;
@@ -249,6 +249,7 @@ export async function runAgentQuery(
   const filter: Record<string, unknown> = {
     node_type: "Problem",
     effective_status: "active",
+    head: true,
   };
   if (input.framework) {
     filter.framework_name = input.framework;

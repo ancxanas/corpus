@@ -584,6 +584,7 @@ export class SqliteNodeStore implements NodeStore {
       language: "language",
       runtime_name: "runtime_name",
       title: "title",
+      head: "head",
     };
     const nocase = new Set(["framework_name", "language", "runtime_name"]);
     for (const [key, value] of Object.entries(f)) {
@@ -594,6 +595,11 @@ export class SqliteNodeStore implements NodeStore {
       if (key === "title") {
         where.push(`${col} LIKE ? COLLATE NOCASE`);
         params.push(`%${String(value)}%`);
+        continue;
+      }
+      if (key === "head") {
+        where.push(`${col} = ?`);
+        params.push(value ? 1 : 0);
         continue;
       }
       if (nocase.has(key)) {
