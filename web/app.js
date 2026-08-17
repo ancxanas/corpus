@@ -1176,6 +1176,15 @@ function renderProblem(problem) {
     </dl>`);
 
   parts.push(renderReferences(problem.references));
+
+  if (problem.tags?.length) {
+    parts.push(
+      `<h2>Tags</h2><div class="row-tags">${
+        problem.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")
+      }</div>`,
+    );
+  }
+
   return parts.join("");
 }
 
@@ -1215,6 +1224,15 @@ function renderRecipe(recipe) {
 
   parts.push(renderCalloutList(recipe.caveats, "warning", "Caveats"));
   parts.push(renderReferences(recipe.references));
+
+  if (recipe.tags?.length) {
+    parts.push(
+      `<h2>Tags</h2><div class="row-tags">${
+        recipe.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")
+      }</div>`,
+    );
+  }
+
   return parts.join("");
 }
 
@@ -1272,7 +1290,9 @@ function renderGuide(guide) {
         : "Attested";
       const body = s.body ?? {};
       parts.push(`
-        <h2 id="guide-sec-${i + 1}">${esc(s.heading)}</h2>
+        <h2 id="guide-sec-${i + 1}">${esc(s.heading)}${
+        s.depth ? ` <span class="tag">${esc(s.depth)}</span>` : ""
+      }</h2>
         <p>${esc(s.claim)}</p>
         <p><span class="pill ${statusCls}"><span class="dot"></span>${
         esc(type)
@@ -1304,6 +1324,15 @@ function renderGuide(guide) {
 
   parts.push(renderCalloutList(guide.caveats, "warning", "Caveats"));
   parts.push(renderReferences(guide.references));
+
+  if (guide.tags?.length) {
+    parts.push(
+      `<h2>Tags</h2><div class="row-tags">${
+        guide.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")
+      }</div>`,
+    );
+  }
+
   return parts.join("");
 }
 
@@ -1367,7 +1396,7 @@ function renderVerification(verification) {
     ${measurementSection}
     <h2>Test suite</h2>
     <table class="cases">
-      <thead><tr><th>Case</th><th>Result</th><th>Expected</th><th>Actual</th></tr></thead>
+      <thead><tr><th>Case</th><th>Result</th><th>Expected</th><th>Actual</th><th>Input</th></tr></thead>
       <tbody>
         ${
     cases.map((c) => `
@@ -1378,6 +1407,7 @@ function renderVerification(verification) {
     }</td>
             <td class="mono">${esc(String(c.expected ?? ""))}</td>
             <td class="mono">${esc(String(c.actual ?? ""))}</td>
+            <td>${c.input_cid ? cidLinkOrText(c.input_cid["/"]) : "—"}</td>
           </tr>`).join("")
   }
       </tbody>
@@ -1427,19 +1457,38 @@ function renderComparison(comparison) {
 
 function renderReference(reference) {
   const entries = reference.entries ?? [];
+  const source = reference.source ?? {};
+  const consistency = reference.consistency ?? {};
   return `
     <dl class="rows">
       <dt>Topic</dt><dd>${esc(reference.topic ?? "—")}</dd>
       <dt>Source</dt><dd>${
-    reference.source?.url
-      ? `<a href="${
-        esc(reference.source.url)
-      }" target="_blank" rel="noreferrer">${
-        esc(reference.source.type ?? "docs")
+    source.url
+      ? `<a href="${esc(source.url)}" target="_blank" rel="noreferrer">${
+        esc(source.type ?? "docs")
       } ${icon("external")}</a>`
-      : esc(reference.source?.type ?? "—")
+      : esc(source.type ?? "—")
   }</dd>
-      <dt>Consistency</dt><dd>${esc(reference.consistency?.result ?? "—")}</dd>
+      <dt>Source type</dt><dd>${esc(source.type ?? "—")}</dd>
+      ${
+    source.synced_at
+      ? `<dt>Last synced</dt><dd>${esc(fmtDateTime(source.synced_at))}</dd>`
+      : ""
+  }
+      ${
+    source.snapshot_cid
+      ? `<dt>Snapshot</dt><dd>${cidLinkOrText(source.snapshot_cid["/"])}</dd>`
+      : ""
+  }
+      <dt>Consistency</dt><dd>${esc(consistency.result ?? "—")}</dd>
+      <dt>Method</dt><dd>${esc(consistency.method ?? "—")}</dd>
+      ${
+    consistency.last_checked
+      ? `<dt>Last checked</dt><dd>${
+        esc(fmtDateTime(consistency.last_checked))
+      }</dd>`
+      : ""
+  }
     </dl>
     <h2>Entries</h2>
     ${
@@ -1503,6 +1552,17 @@ function renderImprovement(improvement) {
         } <span style="color:var(--text-muted);font-size:0.85em">· effort ${
           esc(p.effort ?? "—")
         }</span></div>
+              ${
+          (p.recipe_links ?? []).length
+            ? `<ul style="margin-top:4px">${
+              p.recipe_links.map((rl) =>
+                `<li class="rel-applies">${esc(rl.relation ?? "")} ${
+                  nodeLink(rl.node["/"])
+                }</li>`
+              ).join("")
+            }</ul>`
+            : ""
+        }
             </div>
           </div>`).join("")
       }`
@@ -1618,7 +1678,18 @@ function renderBlueprint(blueprint) {
       <dt>Phase 1</dt><dd>${esc(trajectory.phase_1 ?? "—")}</dd>
       <dt>Phase 2</dt><dd>${esc(trajectory.phase_2 ?? "—")}</dd>
       <dt>Phase 3</dt><dd>${esc(trajectory.phase_3 ?? "—")}</dd>
-    </dl>`;
+    </dl>
+    ${
+    (blueprint.related_nodes ?? []).length
+      ? `<h2>Related nodes</h2><ul>${
+        blueprint.related_nodes.map((rn) =>
+          `<li class="rel-applies">${esc(rn.relation ?? "")} ${
+            nodeLink(rn.node["/"])
+          }</li>`
+        ).join("")
+      }</ul>`
+      : ""
+  }`;
 }
 
 /* ---------- routing ---------- */

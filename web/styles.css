@@ -418,6 +418,31 @@ button {
   color: var(--ok);
 }
 
+.row-icon.type-references {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.row-icon.type-comparisons {
+  background: var(--warn-dim);
+  color: var(--warn);
+}
+
+.row-icon.type-improvements {
+  background: var(--ok-dim);
+  color: var(--ok);
+}
+
+.row-icon.type-blueprints {
+  background: var(--muted-dim);
+  color: var(--text-secondary);
+}
+
+.row-icon.type-verifications {
+  background: var(--ok-dim);
+  color: var(--ok);
+}
+
 .row-body {
   flex: 1;
   min-width: 0;
