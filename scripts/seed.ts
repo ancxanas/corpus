@@ -659,6 +659,7 @@ const recipeRetriesV2 = recipeNode(
     prerequisites: [
       {
         description: "A predictable failure mode that needs a bounded wait.",
+        node: { "/": rRetriesV1 },
       },
     ],
     steps: [
@@ -854,6 +855,13 @@ const problemCrash = problemNode(
     environment: {
       runtime: { type: "deno", versions: ["2.x"] },
       framework: { name: "deno", version: "2.x" },
+      agent_context: {
+        model: "gpt-4o",
+        context_window_size: 128000,
+        context_window_used: 42000,
+        tool_count: 4,
+        reasoning_chain_length: 3,
+      },
     },
     solutions: [{ node: { "/": rCsv } }],
     tags: ["streaming", "memory", "csv"],
@@ -1476,8 +1484,20 @@ const vCsv = verificationNode(ID(24), verifier.publicKeyHex, pCrash, rCsv, {
       failed: 0,
       measurements: MEAS_STREAMING,
       cases: [
-        { name: "small", expected: "ok", actual: "ok", result: "pass" },
-        { name: "large", expected: "ok", actual: "ok", result: "pass" },
+        {
+          name: "small",
+          expected: "ok",
+          actual: "ok",
+          result: "pass",
+          input_cid: { "/": rCsv },
+        },
+        {
+          name: "large",
+          expected: "ok",
+          actual: "ok",
+          result: "pass",
+          input_cid: { "/": rCsv },
+        },
       ],
     },
   },
@@ -1717,6 +1737,7 @@ const vJsonA = verificationNode(
   rJsonStream,
   {
     timestamp: V_JSON_A,
+    valid_until: "2026-12-01T00:00:00Z",
     execution: {
       playground: "sandbox-den",
       environment_hash: ENV_A,
@@ -1726,8 +1747,20 @@ const vJsonA = verificationNode(
         failed: 0,
         measurements: MEAS_STREAMING,
         cases: [
-          { name: "small", expected: "ok", actual: "ok", result: "pass" },
-          { name: "large", expected: "ok", actual: "ok", result: "pass" },
+          {
+            name: "small",
+            expected: "ok",
+            actual: "ok",
+            result: "pass",
+            input_cid: { "/": rJsonStream },
+          },
+          {
+            name: "large",
+            expected: "ok",
+            actual: "ok",
+            result: "pass",
+            input_cid: { "/": rJsonStream },
+          },
         ],
       },
     },
@@ -2041,7 +2074,7 @@ const guideConfidence = guideNode(ID(17), author.publicKeyHex, {
       verification: {
         type: "source_attestation",
         attested_source: "https://corpus.example/spec/v0.3.0#effective-status",
-        result: "confirmed",
+        result: "unconfirmed",
       },
     },
   ],
@@ -2416,7 +2449,7 @@ const guideLeaks = guideNode(ID(22), author.publicKeyHex, {
       verification: {
         type: "source_attestation",
         attested_source: "https://docs.python.org/3/library/tracemalloc.html",
-        result: "confirmed",
+        result: "unconfirmed",
       },
     },
     {
@@ -2507,12 +2540,12 @@ const comparisonJson = comparisonNode(ID(41), author.publicKeyHex, {
     options: [
       {
         name: "streaming",
-        value: "passed 2/2",
+        value: 2,
         benchmark_receipt: { "/": vJsonACid },
       },
       {
         name: "pagination",
-        value: "passed 2/2",
+        value: 2,
         benchmark_receipt: { "/": vJsonBCid },
       },
     ],
@@ -2580,6 +2613,7 @@ const referenceJson = referenceNode(ID(42), author.publicKeyHex, {
     type: "official_docs",
     url: "https://docs.deno.com/api/web/",
     synced_at: "2026-08-05T00:00:00Z",
+    snapshot_cid: { "/": rCsv },
   },
   entries: [
     {
@@ -2646,6 +2680,15 @@ const improvementJson = improvementNode(
           title: "Add a page and next cursor to the handler",
           effort: "M",
           recipe_links: [{ node: { "/": rJsonPage }, relation: "uses" }],
+        },
+        {
+          phase: 2,
+          title: "Migrate existing callers to the paged endpoint",
+          effort: "S",
+          recipe_links: [
+            { node: { "/": rJsonPage }, relation: "requires" },
+            { node: { "/": rJsonStream }, relation: "replaces" },
+          ],
         },
       ],
     },
@@ -2748,6 +2791,12 @@ const blueprintJson = blueprintNode(
           type: "social",
           severity: "medium",
         },
+        {
+          issue:
+            "Pagination adds a per-request overhead that may increase compute costs at scale.",
+          type: "economic",
+          severity: "low",
+        },
       ],
       enablers: [
         "Streaming JSON responses keep RSS flat on a 50MB response.",
@@ -2763,13 +2812,14 @@ const blueprintJson = blueprintNode(
     related_nodes: [
       { node: { "/": rJsonPage }, relation: "enables" },
       { node: { "/": rJsonStream }, relation: "enables" },
+      { node: { "/": pJson }, relation: "solves" },
     ],
-    epistemic_status: "vision",
-    confidence: "low",
+    epistemic_status: "feasible",
+    confidence: "medium",
   },
 );
 await ingest("blueprints", blueprintJson);
 
 console.log(
-  "seed complete: 10 recipes, 10 problems, 5 guides, 3 references, 1 comparison, 1 improvement, 1 blueprint, 14 verifications",
+  "seed complete: 10 recipes, 10 problems, 5 guides, 1 reference, 1 comparison, 1 improvement, 1 blueprint, 14 verifications",
 );

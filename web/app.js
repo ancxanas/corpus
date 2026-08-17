@@ -212,6 +212,17 @@ function cidLinkOrText(cid) {
   return cid ? nodeLink(cid) : "—";
 }
 
+function receiptCidText(cid) {
+  if (!cid) return "—";
+  return `<span class="mono" style="font-size:12px">${
+    esc(shortCid(cid))
+  }… <button class="copy-btn" data-copy-cid="${
+    esc(
+      cid,
+    )
+  }" title="Copy receipt CID">${icon("copy")}</button></span>`;
+}
+
 /* ---------- icons ---------- */
 
 const ICONS = {
@@ -835,7 +846,7 @@ function relationshipsPanel(resource, includedById = new Map()) {
             : 0;
           return `
               <li class="rel-receipt">
-                <span>${nodeLink(r.id, `Receipt ${shortCid(r.id)}`)}</span>
+                <span>${receiptCidText(r.id)}</span>
                 <span class="pct ${failed > 0 ? "bad" : "ok"}">${
             esc(pct)
           }%</span>
@@ -944,9 +955,7 @@ function renderReceiptsPanel(receipts) {
     return `
       <div class="receipt">
         <div class="receipt-main">
-          <div class="receipt-title">${
-      nodeLink(r.id, `Receipt ${shortCid(r.id)}`)
-    }</div>
+          <div class="receipt-title">${receiptCidText(r.id)}</div>
           <div class="receipt-sub">${
       esc(fmtDateTime(r.attributes?.timestamp))
     }</div>
@@ -1436,7 +1445,7 @@ function renderComparison(comparison) {
               <td class="mono">${esc(String(o.value))}</td>
               <td>${
         o.benchmark_receipt?.["/"]
-          ? cidLinkOrText(o.benchmark_receipt["/"])
+          ? receiptCidText(o.benchmark_receipt["/"])
           : "—"
       }</td>
             </tr>`).join("")
@@ -1586,7 +1595,7 @@ function renderImprovement(improvement) {
     (validation.benchmark_receipts ?? []).length
       ? `<h2>Benchmarks</h2><ul>${
         validation.benchmark_receipts.map((r) =>
-          `<li class="rel-receipt">${cidLinkOrText(r["/"])}</li>`
+          `<li class="rel-receipt">${receiptCidText(r["/"])}</li>`
         ).join("")
       }</ul>`
       : ""
