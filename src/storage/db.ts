@@ -189,7 +189,7 @@ function backfillLinks(db: DatabaseSync): void {
     } catch {
       continue;
     }
-    const module = registry[node.osk.node_type];
+    const module = registry[node.corpus.node_type];
     if (!module) {
       continue;
     }

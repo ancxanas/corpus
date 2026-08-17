@@ -3,7 +3,7 @@ import { uuidv7 } from "../core/uuidv7.ts";
 import type { NodeTypeModule } from "./types.ts";
 
 export function isReference(node: Node): node is Node<ReferencePayload> {
-  return node.osk.node_type === "Reference";
+  return node.corpus.node_type === "Reference";
 }
 
 export const referenceModule: NodeTypeModule = {
@@ -14,7 +14,7 @@ export const referenceModule: NodeTypeModule = {
     "Factual API/behavior documentation; each entry maps to a source pointer.",
   template(publicKey) {
     return {
-      osk: {
+      corpus: {
         version: "0.3.0",
         node_type: "Reference",
         node_id: uuidv7(),
@@ -88,7 +88,7 @@ export const referenceModule: NodeTypeModule = {
     const reference = node.payload.reference;
     const issues: ValidationIssue[] = [];
     if (
-      node.osk.knowledge_lifecycle.status === "active" &&
+      node.corpus.knowledge_lifecycle.status === "active" &&
       reference.consistency.result !== "confirmed"
     ) {
       issues.push({

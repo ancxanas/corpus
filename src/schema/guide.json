@@ -2,11 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "corpus:guide",
   "type": "object",
-  "required": ["osk", "payload"],
+  "required": ["corpus", "payload"],
   "properties": {
-    "osk": {
+    "corpus": {
       "allOf": [
-        { "$ref": "corpus:defs#/$defs/osk" },
+        { "$ref": "corpus:defs#/$defs/corpus" },
         { "properties": { "node_type": { "const": "Guide" } } }
       ]
     },

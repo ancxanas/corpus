@@ -32,7 +32,7 @@ export function serializeResource(
     id: indexed.cid,
     links: { self: `${baseUrl}/nodes/${indexed.cid}` },
     attributes: {
-      osk: indexed.node.osk,
+      corpus: indexed.node.corpus,
       payload: indexed.node.payload,
     },
     relationships: Object.fromEntries(

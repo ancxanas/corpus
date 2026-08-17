@@ -669,13 +669,13 @@ export function createApp(
     if (!declared) {
       return unsupportedNodeTypeError();
     }
-    if (node.osk?.node_type !== declared) {
+    if (node.corpus?.node_type !== declared) {
       return jsonResponse(
         errorDocument([
           {
             status: "422",
             title: "node type mismatch",
-            detail: "data.type does not match osk.node_type.",
+            detail: "data.type does not match corpus.node_type.",
           },
         ]),
         422,
@@ -735,14 +735,14 @@ export function createApp(
       );
     }
     const node = data.attributes as Node;
-    if (!node?.osk) {
+    if (!node?.corpus) {
       return jsonResponse(
         errorDocument([
           {
             status: "422",
             title: "invalid request",
-            detail: "Expected a data.attributes object with osk.",
-            source: { pointer: "/data/attributes/osk" },
+            detail: "Expected a data.attributes object with corpus.",
+            source: { pointer: "/data/attributes/corpus" },
           },
         ]),
         422,
@@ -760,7 +760,7 @@ export function createApp(
         422,
       );
     }
-    const publicKey = node.osk.attribution.public_key;
+    const publicKey = node.corpus.attribution.public_key;
     if (rateLimited(publicKey, Date.now())) {
       return jsonResponse(
         errorDocument([
@@ -838,7 +838,7 @@ export function createApp(
         404,
       );
     }
-    const nodeType = indexed.node.osk.node_type;
+    const nodeType = indexed.node.corpus.node_type;
     const forwardNames = registry[nodeType].relationshipNames;
     const reverseNames = registry[nodeType].reverseRelationships?.map((r) =>
       r.name

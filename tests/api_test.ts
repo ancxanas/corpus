@@ -134,7 +134,7 @@ Deno.test("GET /nodes/{cid} returns resource with relationships", async () => {
   assertEquals(res.status, 200);
   assertEquals(body.data.type, "recipes");
   assertEquals(body.data.id, recipeCid);
-  assertEquals(body.data.attributes.osk.node_type, "Recipe");
+  assertEquals(body.data.attributes.corpus.node_type, "Recipe");
   assertEquals(body.data.meta.effective_status, "active");
   assertEquals(body.data.links.self, `http://127.0.0.1/nodes/${recipeCid}`);
   await Deno.remove(dir, { recursive: true });
@@ -274,12 +274,12 @@ Deno.test("POST and search each new node type", async () => {
 
     const filtered = await req(
       handler,
-      `/nodes?filter[node_type]=${node.osk.node_type}`,
+      `/nodes?filter[node_type]=${node.corpus.node_type}`,
     );
     const fbody = await filtered.json();
     assert(
       fbody.data.some((d: { id: string }) => d.id === cid),
-      `filter[node_type]=${node.osk.node_type} must find the node`,
+      `filter[node_type]=${node.corpus.node_type} must find the node`,
     );
   }
   await Deno.remove(dir, { recursive: true });
@@ -411,9 +411,9 @@ Deno.test("schemas are served for the new node types", async () => {
     assertEquals(res.status, 200, `GET /schemas/${type}`);
     assertEquals(body.data.type, "schemas");
     assertEquals(
-      body.data.attributes.required.includes("osk"),
+      body.data.attributes.required.includes("corpus"),
       true,
-      `${type} schema requires osk`,
+      `${type} schema requires corpus`,
     );
   }
   await Deno.remove(dir, { recursive: true });
@@ -751,7 +751,7 @@ Deno.test("GET /nodes/by-node-id returns head and versions relationship", async 
 
   const v2 = signed(
     problemNode(authorKey.publicKeyHex, {
-      nodeId: node.osk.node_id,
+      nodeId: node.corpus.node_id,
       supersedesCid: cid1,
       title: "v2",
     }),
@@ -760,7 +760,7 @@ Deno.test("GET /nodes/by-node-id returns head and versions relationship", async 
   const cid2 = await cidOf(v2);
   await index.indexNode(v2, cid2, new Date().toISOString());
 
-  const res = await req(handler, `/nodes/by-node-id/${node.osk.node_id}`);
+  const res = await req(handler, `/nodes/by-node-id/${node.corpus.node_id}`);
   const body = await res.json();
   assertEquals(res.status, 200);
   assertEquals(body.data.id, cid2);
@@ -777,7 +777,7 @@ Deno.test("GET /nodes/by-node-id returns 409 on fork", async () => {
 
   const a = signed(
     problemNode(authorKey.publicKeyHex, {
-      nodeId: node.osk.node_id,
+      nodeId: node.corpus.node_id,
       supersedesCid: cid1,
       title: "fork variant A",
     }),
@@ -785,7 +785,7 @@ Deno.test("GET /nodes/by-node-id returns 409 on fork", async () => {
   );
   const b = signed(
     problemNode(authorKey.publicKeyHex, {
-      nodeId: node.osk.node_id,
+      nodeId: node.corpus.node_id,
       supersedesCid: cid1,
       title: "fork variant B",
     }),
@@ -794,7 +794,7 @@ Deno.test("GET /nodes/by-node-id returns 409 on fork", async () => {
   await index.indexNode(a, await cidOf(a), new Date().toISOString());
   await index.indexNode(b, await cidOf(b), new Date().toISOString());
 
-  const res = await req(handler, `/nodes/by-node-id/${node.osk.node_id}`);
+  const res = await req(handler, `/nodes/by-node-id/${node.corpus.node_id}`);
   const body = await res.json();
   assertEquals(res.status, 409);
   assertEquals(body.errors.length, 3);
@@ -811,7 +811,7 @@ Deno.test("GET /nodes/by-node-id keeps the owner head after a cross-author super
   const intruder = generateKeyPair();
   const hostile = signed(
     problemNode(intruder.publicKeyHex, {
-      nodeId: node.osk.node_id,
+      nodeId: node.corpus.node_id,
       supersedesCid: cid1,
       title: "hostile v2",
     }),
@@ -820,14 +820,14 @@ Deno.test("GET /nodes/by-node-id keeps the owner head after a cross-author super
   const hostileCid = await cidOf(hostile);
   await index.indexNode(hostile, hostileCid, new Date().toISOString());
 
-  const res = await req(handler, `/nodes/by-node-id/${node.osk.node_id}`);
+  const res = await req(handler, `/nodes/by-node-id/${node.corpus.node_id}`);
   const body = await res.json();
   assertEquals(res.status, 200);
   assertEquals(body.data.id, cid1);
   assertEquals(body.data.relationships.versions.data.length, 2);
   const versions = await req(
     handler,
-    `/nodes/by-node-id/${node.osk.node_id}/versions`,
+    `/nodes/by-node-id/${node.corpus.node_id}/versions`,
   );
   const versionsBody = await versions.json();
   const ids = versionsBody.data.map(
@@ -845,7 +845,7 @@ Deno.test("GET /schemas/{node_type} returns the JSON Schema", async () => {
   assertEquals(res.status, 200);
   assertEquals(body.data.id, "recipes");
   assertEquals(
-    body.data.attributes.properties.osk.allOf[1].properties.node_type.const,
+    body.data.attributes.properties.corpus.allOf[1].properties.node_type.const,
     "Recipe",
   );
   await Deno.remove(dir, { recursive: true });
@@ -858,7 +858,7 @@ Deno.test("GET /schemas/guides returns the Guide JSON Schema", async () => {
   assertEquals(res.status, 200);
   assertEquals(body.data.id, "guides");
   assertEquals(
-    body.data.attributes.properties.osk.allOf[1].properties.node_type.const,
+    body.data.attributes.properties.corpus.allOf[1].properties.node_type.const,
     "Guide",
   );
   await Deno.remove(dir, { recursive: true });
@@ -2192,7 +2192,7 @@ Deno.test("POST /verifications returns 422 for empty attributes", async () => {
   await Deno.remove(dir, { recursive: true });
 });
 
-Deno.test("POST /verifications returns 422 for missing osk", async () => {
+Deno.test("POST /verifications returns 422 for missing corpus", async () => {
   const { handler, dir } = await makeServer();
   const res = await req(handler, "/verifications", {
     method: "POST",
@@ -2204,7 +2204,7 @@ Deno.test("POST /verifications returns 422 for missing osk", async () => {
   assertEquals(res.status, 422);
   const body = await res.json();
   assertEquals(body.errors[0].status, "422");
-  assertEquals(body.errors[0].source.pointer, "/data/attributes/osk");
+  assertEquals(body.errors[0].source.pointer, "/data/attributes/corpus");
   await Deno.remove(dir, { recursive: true });
 });
 

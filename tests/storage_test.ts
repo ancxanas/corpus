@@ -641,7 +641,7 @@ Deno.test("version chain: new version supersedes old, one head", async () => {
   const v1Head = (await env.index.getNode(env.problemCid))?.head;
   assertEquals(v2Head, true);
   assertEquals(v1Head, false);
-  const versions = await env.index.getVersions(v2.osk.node_id);
+  const versions = await env.index.getVersions(v2.corpus.node_id);
   assertEquals(versions.length, 2);
   await Deno.remove(env.dir, { recursive: true });
 });

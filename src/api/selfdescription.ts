@@ -1,6 +1,6 @@
 import { registry } from "../nodetypes/registry.ts";
 
-export const OSK_VERSION = "0.3.0";
+export const CORPUS_VERSION = "0.3.0";
 
 export const QUERY_FILTERS = [
   "node_type",
@@ -26,7 +26,7 @@ export const QUERY_SORTABLE = [
 
 export const QUERY_PAGE_LIMIT_MAX = 100;
 
-const NAME = "OSK Corpus";
+const NAME = "Corpus";
 
 const DESCRIPTION =
   "Signed, content-addressed library of software engineering problems, " +
@@ -48,8 +48,8 @@ const AGENT_QUERY_EXAMPLE =
   '{"query": "heap exhaustion", "limit": 5}';
 
 const HOW_TO_WRITE =
-  "POST /nodes with data.attributes = {osk, payload}. The signature is " +
-  "Ed25519 over the canonical DAG-JSON bytes of {osk, payload} with " +
+  "POST /nodes with data.attributes = {corpus, payload}. The signature is " +
+  "Ed25519 over the canonical DAG-JSON bytes of {corpus, payload} with " +
   "attribution.signature omitted. attribution.public_key must match the " +
   "signing key. Validate against /schemas/{node_type} before submitting. " +
   "Submit verification receipts via POST /verifications. Verification " +
@@ -104,7 +104,7 @@ export function buildSelfDescription(baseUrl: string): Record<string, unknown> {
   }
   return {
     name: NAME,
-    version: OSK_VERSION,
+    version: CORPUS_VERSION,
     description: DESCRIPTION,
     node_types: nodeTypes,
     query: {
@@ -141,7 +141,7 @@ export function buildLlmsText(baseUrl: string): string {
     "",
     DESCRIPTION,
     "",
-    `Version: ${OSK_VERSION}`,
+    `Version: ${CORPUS_VERSION}`,
     "",
     "## Agent query endpoint",
     "",
@@ -212,7 +212,7 @@ export function buildLlmsText(baseUrl: string): string {
     "",
     "POST /nodes with Content-Type application/vnd.api+json and body",
     "`{data: {type, attributes}}`. The signature is Ed25519 over the",
-    "canonical DAG-JSON bytes of {osk, payload} with attribution.signature",
+    "canonical DAG-JSON bytes of {corpus, payload} with attribution.signature",
     "omitted. attribution.public_key must match the signing key. Validate",
     "against /schemas/{node_type} before submitting. Submit verification",
     "receipts via POST /verifications.",

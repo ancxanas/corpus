@@ -144,7 +144,7 @@ export class IngestService {
     }
     if (!isVerification(node)) {
       throw new ValidationError([{
-        pointer: "/osk/node_type",
+        pointer: "/corpus/node_type",
         message: "node must be a Verification node",
       }]);
     }

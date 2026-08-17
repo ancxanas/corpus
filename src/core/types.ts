@@ -33,7 +33,7 @@ export interface Attribution {
   signature?: string;
 }
 
-export interface Osk {
+export interface Corpus {
   version: "0.3.0";
   node_type: NodeType;
   node_id: string;
@@ -196,7 +196,7 @@ export interface VerificationPayload {
 }
 
 export interface Node<T = unknown> {
-  osk: Osk;
+  corpus: Corpus;
   payload: T;
 }
 

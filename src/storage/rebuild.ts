@@ -16,7 +16,7 @@ function orderByDepth(nodes: Indexed[]): Indexed[] {
     if (cached !== undefined) {
       return cached;
     }
-    const parent = n.node.osk.supersedes_cid?.["/"];
+    const parent = n.node.corpus.supersedes_cid?.["/"];
     if (!parent) {
       memo.set(n.cid, 0);
       return 0;
@@ -48,7 +48,7 @@ export async function rebuildIndex(
       throw new Error(`rebuild: block ${block.cid} has an invalid signature`);
     }
     const entry = { cid: block.cid, node };
-    (node.osk.node_type === "Verification" ? receipts : nodes).push(entry);
+    (node.corpus.node_type === "Verification" ? receipts : nodes).push(entry);
   }
   await store.reset();
   const now = new Date().toISOString();

@@ -240,7 +240,7 @@ async function cmdVerify(flags: Flags): Promise<void> {
   const secret = keys.secret_key;
   const publicKey = keys.public_key;
   const node: Node = {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Verification",
       node_id: uuidv7(),

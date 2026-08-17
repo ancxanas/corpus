@@ -40,7 +40,7 @@ Deno.test("entrypoint meta describes the corpus", async () => {
   assertEquals(res.status, 200);
   const body = await res.json();
   assertObjectMatch(body.meta, {
-    name: "OSK Corpus",
+    name: "Corpus",
     version: "0.3.0",
     description: body.meta.description,
     how_to_write: body.meta.how_to_write,
@@ -111,7 +111,7 @@ Deno.test("/llms.txt serves a plain-text brief", async () => {
   assertEquals(res.status, 200);
   assertEquals(res.headers.get("Content-Type"), "text/plain; charset=utf-8");
   const text = await res.text();
-  assertMatch(text, /# OSK Corpus/);
+  assertMatch(text, /# Corpus/);
   assertMatch(text, /DAG-JSON/);
   assertMatch(text, /http:\/\/127\.0\.0\.1\/openapi\.json/);
   assertMatch(text, /filter\[severity\]=critical/);

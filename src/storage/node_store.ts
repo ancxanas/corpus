@@ -81,7 +81,7 @@ const SORT_COLUMNS: Record<string, string> = {
 };
 
 function extractMeta(node: Node): NodeMeta {
-  return registry[node.osk.node_type].meta(node);
+  return registry[node.corpus.node_type].meta(node);
 }
 
 function rowToIndexedVerification(
@@ -190,9 +190,9 @@ export class SqliteNodeStore implements NodeStore {
     cid: string,
     createdAt: string,
   ): Promise<IndexedNode> {
-    const nodeId = node.osk.node_id;
+    const nodeId = node.corpus.node_id;
     const meta = extractMeta(node);
-    const supersededCid = node.osk.supersedes_cid?.["/"] ?? null;
+    const supersededCid = node.corpus.supersedes_cid?.["/"] ?? null;
 
     const db = this.#db;
     db.exec("BEGIN IMMEDIATE;");
@@ -217,7 +217,7 @@ export class SqliteNodeStore implements NodeStore {
         }
         versionSeq = prev.version_seq + 1;
         crossAuthor = prev.author_public_key !==
-          node.osk.attribution.public_key;
+          node.corpus.attribution.public_key;
       }
 
       const effective = crossAuthor
@@ -236,19 +236,19 @@ export class SqliteNodeStore implements NodeStore {
       ).run(
         cid,
         nodeId,
-        node.osk.node_type,
+        node.corpus.node_type,
         versionSeq,
         supersededCid,
-        node.osk.attribution.public_key,
-        node.osk.knowledge_lifecycle.status,
+        node.corpus.attribution.public_key,
+        node.corpus.knowledge_lifecycle.status,
         effective,
         0.0,
-        node.osk.knowledge_lifecycle.last_verified,
+        node.corpus.knowledge_lifecycle.last_verified,
         meta.severity,
         meta.framework_name,
         meta.language,
         meta.runtime_name,
-        registry[node.osk.node_type].title(node),
+        registry[node.corpus.node_type].title(node),
         createdAt,
         0,
         canonicalString(node),
@@ -313,7 +313,7 @@ export class SqliteNodeStore implements NodeStore {
       if (!solution) {
         throw new InvalidNodeError("target solution does not exist in index");
       }
-      if (solution.author_public_key === receipt.osk.attribution.public_key) {
+      if (solution.author_public_key === receipt.corpus.attribution.public_key) {
         throw new InvalidNodeError(
           "verifier must not verify their own solution",
         );
@@ -329,7 +329,7 @@ export class SqliteNodeStore implements NodeStore {
         problemCid,
         solutionCid,
         verification.execution.environment_hash,
-        receipt.osk.attribution.public_key,
+        receipt.corpus.attribution.public_key,
         verification.timestamp,
         verification.valid_until ?? null,
         verification.execution.test_suite.total,
@@ -432,7 +432,7 @@ export class SqliteNodeStore implements NodeStore {
   ): Promise<{ pointer: string; message: string }[]> {
     if (!isVerification(receipt)) {
       return [{
-        pointer: "/osk/node_type",
+        pointer: "/corpus/node_type",
         message: "receipt is not a Verification node",
       }];
     }
@@ -470,10 +470,10 @@ export class SqliteNodeStore implements NodeStore {
 
     if (
       solution &&
-      solution.author_public_key === receipt.osk.attribution.public_key
+      solution.author_public_key === receipt.corpus.attribution.public_key
     ) {
       issues.push({
-        pointer: "/osk/attribution/public_key",
+        pointer: "/corpus/attribution/public_key",
         message: "a verifier must not verify their own solution",
       });
     }
@@ -686,7 +686,7 @@ export class SqliteNodeStore implements NodeStore {
   }
 
   #indexTriggers(node: Node, cid: string): void {
-    const triggers = node.osk.knowledge_lifecycle.deprecation_triggers ?? [];
+    const triggers = node.corpus.knowledge_lifecycle.deprecation_triggers ?? [];
     const stmt = this.#db.prepare(
       `INSERT INTO deprecation_triggers (node_cid, scope, versioning_scheme, condition)
        VALUES (?, ?, ?, ?)`,
@@ -701,7 +701,7 @@ export class SqliteNodeStore implements NodeStore {
       `INSERT OR IGNORE INTO node_links (source_cid, name, target_cid)
        VALUES (?, ?, ?)`,
     );
-    for (const def of registry[node.osk.node_type].relationships(node)) {
+    for (const def of registry[node.corpus.node_type].relationships(node)) {
       for (const link of def.links) {
         stmt.run(cid, def.name, link.cid);
       }

@@ -223,9 +223,9 @@ const ENVELOPE_SCHEMAS: Json = {
       },
       attributes: {
         type: "object",
-        description: "The signed node: its OSK header and payload.",
+        description: "The signed node: its Corpus header and payload.",
         properties: {
-          osk: { $ref: "#/components/schemas/osk" },
+          corpus: { $ref: "#/components/schemas/corpus" },
           payload: { type: "object" },
         },
       },

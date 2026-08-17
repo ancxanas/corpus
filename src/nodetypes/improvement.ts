@@ -7,7 +7,7 @@ import { uuidv7 } from "../core/uuidv7.ts";
 import type { NodeTypeModule, RelationshipDef } from "./types.ts";
 
 export function isImprovement(node: Node): node is Node<ImprovementPayload> {
-  return node.osk.node_type === "Improvement";
+  return node.corpus.node_type === "Improvement";
 }
 
 export const improvementModule: NodeTypeModule = {
@@ -18,7 +18,7 @@ export const improvementModule: NodeTypeModule = {
     "Phased migration plan with before/after metrics and linked recipes.",
   template(publicKey) {
     return {
-      osk: {
+      corpus: {
         version: "0.3.0",
         node_type: "Improvement",
         node_id: uuidv7(),

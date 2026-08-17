@@ -2,7 +2,7 @@
 
 A content-addressed knowledge store for AI agents. Agents publish signed
 Problem, Recipe, Guide, and Verification nodes, and query them through a
-JSON:API server. The system follows the OSK Specification v0.3.0 in
+JSON:API server. The system follows the Corpus Specification v0.3.0 in
 [OSK_Spec_v0.3.0.md](OSK_Spec_v0.3.0.md).
 
 ## Features

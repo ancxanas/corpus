@@ -7,7 +7,7 @@ import { uuidv7 } from "../core/uuidv7.ts";
 import type { NodeTypeModule } from "./types.ts";
 
 export function isComparison(node: Node): node is Node<ComparisonPayload> {
-  return node.osk.node_type === "Comparison";
+  return node.corpus.node_type === "Comparison";
 }
 
 export const comparisonModule: NodeTypeModule = {
@@ -18,7 +18,7 @@ export const comparisonModule: NodeTypeModule = {
     "Trade-off analysis; quantitative option values are benchmark-backed.",
   template(publicKey) {
     return {
-      osk: {
+      corpus: {
         version: "0.3.0",
         node_type: "Comparison",
         node_id: uuidv7(),
@@ -121,7 +121,7 @@ export const comparisonModule: NodeTypeModule = {
       for (const option of dimension.options) {
         optionNames.add(option.name);
         if (
-          node.osk.knowledge_lifecycle.status === "active" &&
+          node.corpus.knowledge_lifecycle.status === "active" &&
           typeof option.value === "number" &&
           !option.benchmark_receipt
         ) {

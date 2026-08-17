@@ -24,7 +24,7 @@ export async function extractRelationships(
   cid: string,
 ): Promise<Record<string, RelationshipView>> {
   const result: Record<string, RelationshipView> = {};
-  for (const def of registry[node.osk.node_type].relationships(node)) {
+  for (const def of registry[node.corpus.node_type].relationships(node)) {
     result[def.name] = {
       related: `/nodes/${cid}/${def.name}`,
       data: await Promise.all(def.links.map(async (l) => ({
@@ -41,7 +41,7 @@ export function linkedCidsOf(
   node: Node,
   relationship: string,
 ): string[] {
-  return registry[node.osk.node_type].linkedCids(node, relationship);
+  return registry[node.corpus.node_type].linkedCids(node, relationship);
 }
 
 export async function serializeWithIncludes(

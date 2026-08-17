@@ -6,7 +6,7 @@ import {
   verify,
 } from "node:crypto";
 import { Buffer } from "node:buffer";
-import type { Node, Osk } from "./types.ts";
+import type { Node, Corpus } from "./types.ts";
 import { canonicalBytes } from "./serialize.ts";
 
 const PKCS8_PREFIX = new Uint8Array([
@@ -120,9 +120,9 @@ export function verifyMessage(
   }
 }
 
-function unsignedObject(node: Node): { osk: Osk; payload: unknown } {
-  const { signature: _signature, ...attribution } = node.osk.attribution;
-  return { osk: { ...node.osk, attribution }, payload: node.payload };
+function unsignedObject(node: Node): { corpus: Corpus; payload: unknown } {
+  const { signature: _signature, ...attribution } = node.corpus.attribution;
+  return { corpus: { ...node.corpus, attribution }, payload: node.payload };
 }
 
 export function signNode(node: Node, secretKeyHex: string): Node {
@@ -130,15 +130,15 @@ export function signNode(node: Node, secretKeyHex: string): Node {
   const signature = signMessage(canonicalBytes(unsigned), secretKeyHex);
   return {
     ...node,
-    osk: {
-      ...node.osk,
-      attribution: { ...node.osk.attribution, signature },
+    corpus: {
+      ...node.corpus,
+      attribution: { ...node.corpus.attribution, signature },
     },
   };
 }
 
 export function verifyNodeSignature(node: Node): boolean {
-  const signature = node.osk.attribution.signature;
+  const signature = node.corpus.attribution.signature;
   if (!signature) {
     return false;
   }
@@ -146,6 +146,6 @@ export function verifyNodeSignature(node: Node): boolean {
   return verifyMessage(
     canonicalBytes(unsigned),
     signature,
-    node.osk.attribution.public_key,
+    node.corpus.attribution.public_key,
   );
 }

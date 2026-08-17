@@ -51,9 +51,9 @@ function toIssues(errors: ErrorObject[]): ValidationIssue[] {
 }
 
 export async function validateNode(node: unknown): Promise<ValidationIssue[]> {
-  const nodeType = (node as Node).osk?.node_type as NodeType;
+  const nodeType = (node as Node).corpus?.node_type as NodeType;
   if (!nodeType) {
-    return [{ pointer: "/osk/node_type", message: "node_type is required" }];
+    return [{ pointer: "/corpus/node_type", message: "node_type is required" }];
   }
   const validate = await compiler(nodeType);
   const valid = validate(node);

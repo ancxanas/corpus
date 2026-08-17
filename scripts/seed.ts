@@ -136,13 +136,13 @@ async function api(path: string, init?: RequestInit): Promise<unknown> {
   return body;
 }
 
-function osk(
+function corpus(
   nodeId: string,
-  nodeType: Node["osk"]["node_type"],
+  nodeType: Node["corpus"]["node_type"],
   publicKey: string,
   status: "active" | "deprecated" | "disputed" | "draft",
-  overrides: Partial<Node["osk"]> = {},
-): Node["osk"] {
+  overrides: Partial<Node["corpus"]> = {},
+): Node["corpus"] {
   return {
     version: "0.3.0",
     node_type: nodeType,
@@ -161,10 +161,10 @@ function problemNode(
   publicKey: string,
   payload: ProblemPayload["problem"],
   status: "active" | "deprecated" | "disputed" | "draft" = "active",
-  oskOverrides: Partial<Node["osk"]> = {},
+  corpusOverrides: Partial<Node["corpus"]> = {},
 ): Node<ProblemPayload> {
   return {
-    osk: osk(nodeId, "Problem", publicKey, status, oskOverrides),
+    corpus: corpus(nodeId, "Problem", publicKey, status, corpusOverrides),
     payload: { problem: payload },
   };
 }
@@ -174,10 +174,10 @@ function recipeNode(
   publicKey: string,
   payload: RecipePayload["recipe"],
   status: "active" | "deprecated" | "disputed" | "draft" = "active",
-  oskOverrides: Partial<Node["osk"]> = {},
+  corpusOverrides: Partial<Node["corpus"]> = {},
 ): Node<RecipePayload> {
   return {
-    osk: osk(nodeId, "Recipe", publicKey, status, oskOverrides),
+    corpus: corpus(nodeId, "Recipe", publicKey, status, corpusOverrides),
     payload: { recipe: payload },
   };
 }
@@ -188,7 +188,7 @@ function guideNode(
   payload: GuidePayload["guide"],
 ): Node<GuidePayload> {
   return {
-    osk: osk(nodeId, "Guide", publicKey, "active"),
+    corpus: corpus(nodeId, "Guide", publicKey, "active"),
     payload: { guide: payload },
   };
 }
@@ -199,7 +199,7 @@ function comparisonNode(
   payload: ComparisonPayload["comparison"],
 ): Node<ComparisonPayload> {
   return {
-    osk: osk(nodeId, "Comparison", publicKey, "active"),
+    corpus: corpus(nodeId, "Comparison", publicKey, "active"),
     payload: { comparison: payload },
   };
 }
@@ -210,7 +210,7 @@ function referenceNode(
   payload: ReferencePayload["reference"],
 ): Node<ReferencePayload> {
   return {
-    osk: osk(nodeId, "Reference", publicKey, "active"),
+    corpus: corpus(nodeId, "Reference", publicKey, "active"),
     payload: { reference: payload },
   };
 }
@@ -221,7 +221,7 @@ function improvementNode(
   payload: ImprovementPayload["improvement"],
 ): Node<ImprovementPayload> {
   return {
-    osk: osk(nodeId, "Improvement", publicKey, "active"),
+    corpus: corpus(nodeId, "Improvement", publicKey, "active"),
     payload: { improvement: payload },
   };
 }
@@ -232,7 +232,7 @@ function blueprintNode(
   payload: BlueprintPayload["blueprint"],
 ): Node<BlueprintPayload> {
   return {
-    osk: osk(nodeId, "Blueprint", publicKey, "active"),
+    corpus: corpus(nodeId, "Blueprint", publicKey, "active"),
     payload: { blueprint: payload },
   };
 }
@@ -245,7 +245,7 @@ function verificationNode(
   overrides: Partial<VerificationPayload["verification"]> = {},
 ): Node<VerificationPayload> {
   return {
-    osk: osk(nodeId, "Verification", publicKey, "active"),
+    corpus: corpus(nodeId, "Verification", publicKey, "active"),
     payload: {
       verification: {
         target: {

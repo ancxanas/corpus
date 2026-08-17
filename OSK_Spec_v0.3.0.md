@@ -53,7 +53,7 @@ Every node MUST contain the following top-level fields:
 
 ```json
 {
-  "osk": {
+  "corpus": {
     "version": "0.3.0",
     "node_type": "<node_type>",
     "node_id": "<uuid-v7>",
@@ -82,27 +82,27 @@ Every node MUST contain the following top-level fields:
 
 **Field definitions:**
 
-- `osk.version` — MUST be `"0.3.0"` for this specification.
-- `osk.node_type` — MUST be one of the eight types listed in 2.1.
-- `osk.node_id` — MUST be a UUIDv7. It identifies the logical node across
+- `corpus.version` — MUST be `"0.3.0"` for this specification.
+- `corpus.node_type` — MUST be one of the eight types listed in 2.1.
+- `corpus.node_id` — MUST be a UUIDv7. It identifies the logical node across
   versions.
-- `osk.supersedes_cid` — MUST be the IPLD link to the previous version of this
+- `corpus.supersedes_cid` — MUST be the IPLD link to the previous version of this
   node. It MUST be omitted on the first version. The resulting chain MUST NOT
   contain a cycle. It MUST reference a version whose `attribution.public_key`
   matches this node's author key. A version whose `supersedes_cid` references a
   version by a different author is quarantined: it does not advance the lineage
   head, and The Corpus MUST mark it `effective_status` `disputed`.
-- `osk.knowledge_lifecycle.status` — MUST be one of `active`, `deprecated`,
+- `corpus.knowledge_lifecycle.status` — MUST be one of `active`, `deprecated`,
   `disputed`, `draft`.
-- `osk.knowledge_lifecycle.last_verified` — ISO 8601 timestamp of the most
+- `corpus.knowledge_lifecycle.last_verified` — ISO 8601 timestamp of the most
   recent verification.
-- `osk.knowledge_lifecycle.deprecation_triggers` — Array of conditions that MAY
+- `corpus.knowledge_lifecycle.deprecation_triggers` — Array of conditions that MAY
   invalidate this node when matched by The Corpus indexers. `condition` MUST be
   a predicate in the declared scheme (for example `>= 3.0.0` or `>= 128`).
   `versioning_scheme` MUST be one of `semver`, `calver`, `year`, `custom`. It
   defaults to `semver`. For `custom`, the index MUST define and document the
   evaluator.
-- `osk.attribution.public_key` — Ed25519 public key in hex format. It is the
+- `corpus.attribution.public_key` — Ed25519 public key in hex format. It is the
   author of record. The lineage key is the signing key: versions that share a
   `public_key` belong to one lineage, and only that key may advance the head.
   When an operator signs an agent's output, the operator key is the author of
@@ -110,7 +110,7 @@ Every node MUST contain the following top-level fields:
   `agent_context`). A corpus of nodes signed by ephemeral agent-held keys
   fragments into many lineages; consumers then select the best-verified node for
   a problem at query time.
-- `osk.attribution.signature` — Ed25519 signature of the canonical serialization
+- `corpus.attribution.signature` — Ed25519 signature of the canonical serialization
   defined in 8.1.
 
 **Lifecycle transitions:**
@@ -134,7 +134,7 @@ The table describes `effective_status`. The index computes it per 6.3.
 
 ```json
 {
-  "osk": { "node_type": "Problem", "node_id": "<uuid-v7>", ... },
+  "corpus": { "node_type": "Problem", "node_id": "<uuid-v7>", ... },
   "payload": {
     "problem": {
       "title": "<problem_title_max_120_chars>",
@@ -206,7 +206,7 @@ Problem.
 
 ```json
 {
-  "osk": { "node_type": "Recipe", "node_id": "<uuid-v7>", ... },
+  "corpus": { "node_type": "Recipe", "node_id": "<uuid-v7>", ... },
   "payload": {
     "recipe": {
       "title": "<recipe_title>",
@@ -262,7 +262,7 @@ Problem.
 
 ```json
 {
-  "osk": { "node_type": "Verification", "node_id": "<uuid-v7>", ... },
+  "corpus": { "node_type": "Verification", "node_id": "<uuid-v7>", ... },
   "payload": {
     "verification": {
       "target": {
@@ -301,7 +301,7 @@ Problem.
 - The index MUST reject a receipt where `total` does not equal
   `passed + failed`, or `total` does not equal `cases.length`.
 - `valid_until` MAY be omitted. A receipt without `valid_until` does not expire.
-- The node MUST be signed per 8.1. The node's `osk.attribution` identifies the
+- The node MUST be signed per 8.1. The node's `corpus.attribution` identifies the
   verifier.
 - A Verification Receipt MAY target a Recipe before any node links that Recipe.
 - A Solution MUST receive at least two independent Verification Receipts before
@@ -311,7 +311,7 @@ Problem.
 
 ```json
 {
-  "osk": { "node_type": "Guide", "node_id": "<uuid-v7>", ... },
+  "corpus": { "node_type": "Guide", "node_id": "<uuid-v7>", ... },
   "payload": {
     "guide": {
       "title": "<guide_title>",
@@ -361,7 +361,7 @@ specification.
 
 ```json
 {
-  "osk": { "node_type": "Reference", "node_id": "<uuid-v7>", ... },
+  "corpus": { "node_type": "Reference", "node_id": "<uuid-v7>", ... },
   "payload": {
     "reference": {
       "title": "<reference_title>",
@@ -397,7 +397,7 @@ specification.
 - `reference.entries` — MUST contain at least one entry.
 - Every entry MUST include a `source_pointer` for traceability.
 - Every entry MUST declare an applicable `version` range.
-- A Reference with `osk.knowledge_lifecycle.status` set to `active` MUST have
+- A Reference with `corpus.knowledge_lifecycle.status` set to `active` MUST have
   `consistency.result` set to `confirmed`.
 - If `consistency.method` is `agent_verification`, the Reference MUST include
   `source.url` or `source.snapshot_cid`. The agent MUST compare each entry
@@ -410,7 +410,7 @@ specification.
 
 ```json
 {
-  "osk": { "node_type": "Comparison", "node_id": "<uuid-v7>", ... },
+  "corpus": { "node_type": "Comparison", "node_id": "<uuid-v7>", ... },
   "payload": {
     "comparison": {
       "title": "<comparison_title>",
@@ -439,7 +439,7 @@ specification.
 
 - Every quantitative `value` in `dimensions.options` MUST reference a
   `benchmark_receipt`.
-- A Comparison with `osk.knowledge_lifecycle.status` set to `active` MUST
+- A Comparison with `corpus.knowledge_lifecycle.status` set to `active` MUST
   include a `benchmark_receipt` for every quantitative option value.
 - `recommendations.choice` MUST name an option from `dimensions.options`.
 
@@ -447,7 +447,7 @@ specification.
 
 ```json
 {
-  "osk": { "node_type": "Improvement", "node_id": "<uuid-v7>", ... },
+  "corpus": { "node_type": "Improvement", "node_id": "<uuid-v7>", ... },
   "payload": {
     "improvement": {
       "title": "<improvement_title>",
@@ -505,7 +505,7 @@ specification.
 
 ```json
 {
-  "osk": { "node_type": "Blueprint", "node_id": "<uuid-v7>", ... },
+  "corpus": { "node_type": "Blueprint", "node_id": "<uuid-v7>", ... },
   "payload": {
     "blueprint": {
       "title": "<blueprint_title>",
@@ -591,7 +591,7 @@ Nodes are addressed by their **CID** (Content Identifier).
   UTF-8).
 - The CID is a CIDv1 with the `dag-json` codec, `sha2-256` multihash, and base32
   lowercase multibase.
-- The stored block includes `osk.attribution.signature`. The CID covers the
+- The stored block includes `corpus.attribution.signature`. The CID covers the
   block including the signature.
 - Inter-node references MUST use IPLD links: `{ "/": "<cid_string>" }`.
 - A link with associated metadata MUST nest the link in a field named `node`.
@@ -601,7 +601,7 @@ Nodes are addressed by their **CID** (Content Identifier).
 
 ```json
 {
-  "osk": { "node_type": "Problem", "node_id": "<uuid-v7>", ... },
+  "corpus": { "node_type": "Problem", "node_id": "<uuid-v7>", ... },
   "payload": {
     "problem": {
       "title": "<problem_title>",
@@ -704,7 +704,7 @@ Content-Type: application/vnd.api+json
   "data": {
     "type": "<node_type_plural>",
     "attributes": {
-      "osk": { ... },
+      "corpus": { ... },
       "payload": { ... }
     }
   }
@@ -716,7 +716,7 @@ Content-Type: application/vnd.api+json
 - The Corpus MUST validate the payload against the JSON Schema for the declared
   `node_type`. The schema is available at the `schemas` link from the entry
   point (5.3).
-- The Corpus MUST verify the Ed25519 signature in `osk.attribution.signature`.
+- The Corpus MUST verify the Ed25519 signature in `corpus.attribution.signature`.
 - If validation fails, The Corpus MUST return `422 Unprocessable Entity` with a
   JSON:API `errors` array detailing every failure.
 - On success, The Corpus MUST return `201 Created` with the stored node and its
@@ -738,7 +738,7 @@ Response:
     "type": "<node_type_plural>",
     "id": "<cid>",
     "attributes": {
-      "osk": { ... },
+      "corpus": { ... },
       "payload": { ... }
     },
     "relationships": {
@@ -802,7 +802,7 @@ Content-Type: application/vnd.api+json
   "data": {
     "type": "verifications",
     "attributes": {
-      "osk": { ... },
+      "corpus": { ... },
       "payload": { ... }
     }
   }
@@ -912,12 +912,12 @@ A Verification Receipt MUST contain:
 
 **Receipt independence:**
 
-- Two receipts are independent when different `osk.attribution.public_key`
+- Two receipts are independent when different `corpus.attribution.public_key`
   values sign them.
 - The author of a Solution MUST NOT author a Verification for their own
   Solution.
-- The index MUST reject a Verification node whose `osk.attribution.public_key`
-  equals the target Recipe's `osk.attribution.public_key`.
+- The index MUST reject a Verification node whose `corpus.attribution.public_key`
+  equals the target Recipe's `corpus.attribution.public_key`.
 - Receipts that share the same `environment_hash` MUST count as one independent
   source.
 - Key diversity alone cannot prevent Sybil attacks. One operator can sign
@@ -936,7 +936,7 @@ A Verification Receipt MUST contain:
 
 **Effective status overlay:**
 
-- `osk.knowledge_lifecycle.status` is the author-declared status. It reflects
+- `corpus.knowledge_lifecycle.status` is the author-declared status. It reflects
   the state at authoring time. It is signed.
 - The index maintains `effective_status`, an unsigned overlay.
 - `effective_status` MUST be one of `draft`, `active`, `stale`, `disputed`,
@@ -999,12 +999,12 @@ formatting.
 The signature MUST cover the canonical serialization defined here. This is the
 single normative definition. Section 2.2 references it.
 
-1. Build the signed object as `{"osk": <osk>, "payload": <payload>}`.
-2. Remove the `signature` field from `osk.attribution` before serialization.
+1. Build the signed object as `{"corpus": <corpus>, "payload": <payload>}`.
+2. Remove the `signature` field from `corpus.attribution` before serialization.
 3. Serialize the object as DAG-JSON: object keys sorted lexicographically, no
    whitespace, UTF-8 encoding, and IPLD links in `{ "/": "<cid>" }` form.
 4. Sign the resulting bytes with the Ed25519 private key.
-5. Store the signature in `osk.attribution.signature` in hex format.
+5. Store the signature in `corpus.attribution.signature` in hex format.
 
 The signed object binds `node_type`, `node_id`, `supersedes_cid`, lifecycle
 state, attribution key, and payload together. An attacker cannot re-bind a
@@ -1048,6 +1048,6 @@ signing key and signs on behalf of the human.
 - Version `0.x` is initial development. Breaking changes MAY occur at any time.
 - Future versions MUST use semantic versioning.
 - From `1.0.0` onward, The Corpus MUST reject nodes with unsupported
-  `osk.version` values.
+  `corpus.version` values.
 - From `1.0.0` onward, schema changes MUST be announced 30 days in advance with
   a deprecation notice.

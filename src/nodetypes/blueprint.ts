@@ -3,7 +3,7 @@ import { uuidv7 } from "../core/uuidv7.ts";
 import type { NodeTypeModule } from "./types.ts";
 
 export function isBlueprint(node: Node): node is Node<BlueprintPayload> {
-  return node.osk.node_type === "Blueprint";
+  return node.corpus.node_type === "Blueprint";
 }
 
 export const blueprintModule: NodeTypeModule = {
@@ -14,7 +14,7 @@ export const blueprintModule: NodeTypeModule = {
     "Architectural vision with feasibility analysis and adoption trajectory.",
   template(publicKey) {
     return {
-      osk: {
+      corpus: {
         version: "0.3.0",
         node_type: "Blueprint",
         node_id: uuidv7(),

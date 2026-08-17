@@ -61,7 +61,7 @@ Deno.test("migrate backfills node_links from existing rows", () => {
   const db = new DatabaseSync(path);
   migrate(db);
   const node = {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Problem",
       node_id: "n1",
@@ -130,7 +130,7 @@ Deno.test("migrate backfills search_index from existing rows", () => {
   const db = new DatabaseSync(path);
   migrate(db);
   const node = {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Problem",
       node_id: "n2",

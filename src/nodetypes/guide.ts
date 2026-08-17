@@ -3,7 +3,7 @@ import { uuidv7 } from "../core/uuidv7.ts";
 import type { NodeTypeModule } from "./types.ts";
 
 export function isGuide(node: Node): node is Node<GuidePayload> {
-  return node.osk.node_type === "Guide";
+  return node.corpus.node_type === "Guide";
 }
 
 export const guideModule: NodeTypeModule = {
@@ -14,7 +14,7 @@ export const guideModule: NodeTypeModule = {
     "Walkthroughs; each section carries its own claim and attestation.",
   template(publicKey) {
     return {
-      osk: {
+      corpus: {
         version: "0.3.0",
         node_type: "Guide",
         node_id: uuidv7(),

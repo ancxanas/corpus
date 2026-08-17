@@ -3,7 +3,7 @@ import { uuidv7 } from "../core/uuidv7.ts";
 import type { NodeTypeModule } from "./types.ts";
 
 export function isProblem(node: Node): node is Node<ProblemPayload> {
-  return node.osk.node_type === "Problem";
+  return node.corpus.node_type === "Problem";
 }
 
 export const problemModule: NodeTypeModule = {
@@ -14,7 +14,7 @@ export const problemModule: NodeTypeModule = {
     "A diagnosed failure: symptoms, root cause, and reproduction. Links to solution recipes.",
   template(publicKey) {
     return {
-      osk: {
+      corpus: {
         version: "0.3.0",
         node_type: "Problem",
         node_id: uuidv7(),

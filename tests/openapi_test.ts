@@ -203,7 +203,7 @@ Deno.test("openapi document embeds the node and defs schemas", async () => {
       "Comparison",
       "Improvement",
       "Blueprint",
-      "osk",
+      "corpus",
       "ipldLink",
       "iso8601",
       "attribution",
@@ -213,8 +213,8 @@ Deno.test("openapi document embeds the node and defs schemas", async () => {
     assertEquals(typeof schemas[name], "object", `missing schema ${name}`);
   }
   assertEquals(
-    schemas.Problem.properties.osk.allOf[0].$ref,
-    "#/components/schemas/osk",
+    schemas.Problem.properties.corpus.allOf[0].$ref,
+    "#/components/schemas/corpus",
   );
   assertEquals(schemas.ipldLink.properties["/"].pattern, "^b[a-z2-7]{60}$");
   await Deno.remove(dir, { recursive: true });

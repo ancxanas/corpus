@@ -50,7 +50,7 @@ export function cachedVersionPins(path: string | undefined): () => VersionPin {
 }
 
 export function deprecationTriggerFired(node: Node, pins: VersionPin): boolean {
-  const triggers = node.osk.knowledge_lifecycle.deprecation_triggers ?? [];
+  const triggers = node.corpus.knowledge_lifecycle.deprecation_triggers ?? [];
   for (const trigger of triggers) {
     const current = pins[trigger.scope];
     if (current === undefined) {

@@ -15,7 +15,7 @@ import { computeCid } from "../src/core/cid.ts";
 import type { Node } from "../src/core/types.ts";
 
 const node: Node = {
-  osk: {
+  corpus: {
     version: "0.3.0",
     node_type: "Problem",
     node_id: "0190c0a0-0000-7000-8000-000000000001",
@@ -53,7 +53,7 @@ Deno.test("serialization is byte-stable", () => {
   const b = canonicalString(node);
   assertEquals(a, b);
   const parsed = parseCanonicalString(a) as Node;
-  assertEquals(parsed.osk.node_type, "Problem");
+  assertEquals(parsed.corpus.node_type, "Problem");
 });
 
 Deno.test("canonical serialization has sorted keys and no whitespace", () => {
@@ -67,10 +67,10 @@ Deno.test("canonical serialization has sorted keys and no whitespace", () => {
     "node_type",
     "version",
   ];
-  const start = str.indexOf('"osk":');
+  const start = str.indexOf('"corpus":');
   const end = str.indexOf("payload", start);
-  const oskSlice = str.slice(start, end);
-  const positions = order.map((k) => oskSlice.indexOf(`"${k}"`));
+  const corpusSlice = str.slice(start, end);
+  const positions = order.map((k) => corpusSlice.indexOf(`"${k}"`));
   assertEquals(positions.every((p) => p >= 0), true);
   assertEquals(positions, [...positions].sort((x, y) => x - y));
 });
@@ -104,9 +104,9 @@ Deno.test("node signature round-trip and tamper detection", () => {
   const { publicKeyHex, secretKeyHex } = generateKeyPair();
   const keyedNode: Node = {
     ...node,
-    osk: {
-      ...node.osk,
-      attribution: { ...node.osk.attribution, public_key: publicKeyHex },
+    corpus: {
+      ...node.corpus,
+      attribution: { ...node.corpus.attribution, public_key: publicKeyHex },
     },
   };
   const signed = signNode(keyedNode, secretKeyHex);
@@ -126,15 +126,15 @@ Deno.test("signature binds node_id to payload", () => {
   const { publicKeyHex, secretKeyHex } = generateKeyPair();
   const keyedNode: Node = {
     ...node,
-    osk: {
-      ...node.osk,
-      attribution: { ...node.osk.attribution, public_key: publicKeyHex },
+    corpus: {
+      ...node.corpus,
+      attribution: { ...node.corpus.attribution, public_key: publicKeyHex },
     },
   };
   const signed = signNode(keyedNode, secretKeyHex);
   const rebound: Node = {
     ...signed,
-    osk: { ...signed.osk, node_id: "0190c0a0-0000-7000-8000-000000000999" },
+    corpus: { ...signed.corpus, node_id: "0190c0a0-0000-7000-8000-000000000999" },
   };
   assertEquals(verifyNodeSignature(rebound), false);
 });

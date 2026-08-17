@@ -16,7 +16,7 @@ Stack: Deno + TypeScript. MVP = Problem / Recipe / Verification triangle.
 - [x] `serialize.ts`: canonical DAG-JSON encode via `@ipld/dag-json`
 - [x] `sign.ts`: Ed25519 via built-in `node:crypto` (no noble/postgres deps)
 - [x] `cid.ts`: CIDv1 (dag-json codec, sha2-256, base32)
-- [x] Common `osk` JSON Schema
+- [x] Common `corpus` JSON Schema
 - [x] `problem` JSON Schema (severity enum, >=1 symptom, agent_context optional,
       optional summary/impact/reproduction/diagnosis/tags/references)
 - [x] `recipe` JSON Schema (language id, code body, caveats, optional
@@ -312,7 +312,7 @@ Stack: Deno + TypeScript. MVP = Problem / Recipe / Verification triangle.
 
 ## Audit record
 
-- 2026-08-14: full code review against OSK Spec v0.3.0. Findings moved to Phases
+- 2026-08-14: full code review against Corpus Spec v0.3.0. Findings moved to Phases
   7-12. HIGH: replay not wired, no content negotiation, no body limit,
   orphan-block risk, dead scaffolding. MEDIUM: no shutdown, origin-based links,
   wildcard bind + wrong log, lax by-node-id paths, no observability.

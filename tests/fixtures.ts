@@ -24,7 +24,7 @@ export function problemNode(
   } = {},
 ): Node<ProblemPayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Problem",
       node_id: options.nodeId ?? uuidv7(),
@@ -77,7 +77,7 @@ export function recipeNode(
   } = {},
 ): Node<RecipePayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Recipe",
       node_id: options.nodeId ?? uuidv7(),
@@ -116,7 +116,7 @@ export function verificationNode(
   overrides: Partial<VerificationPayload["verification"]> = {},
 ): Node<VerificationPayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Verification",
       node_id: uuidv7(),
@@ -157,7 +157,7 @@ export function guideNode(
   options: { nodeId?: string } = {},
 ): Node<GuidePayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Guide",
       node_id: options.nodeId ?? uuidv7(),
@@ -198,7 +198,7 @@ export function referenceNode(
   options: { nodeId?: string; title?: string } = {},
 ): Node<ReferencePayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Reference",
       node_id: options.nodeId ?? uuidv7(),
@@ -245,7 +245,7 @@ export function comparisonNode(
   } = {},
 ): Node<ComparisonPayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Comparison",
       node_id: options.nodeId ?? uuidv7(),
@@ -304,7 +304,7 @@ export function improvementNode(
   } = {},
 ): Node<ImprovementPayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Improvement",
       node_id: options.nodeId ?? uuidv7(),
@@ -361,7 +361,7 @@ export function blueprintNode(
   } = {},
 ): Node<BlueprintPayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Blueprint",
       node_id: options.nodeId ?? uuidv7(),

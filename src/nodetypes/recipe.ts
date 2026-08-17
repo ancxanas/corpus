@@ -3,7 +3,7 @@ import { uuidv7 } from "../core/uuidv7.ts";
 import type { NodeTypeModule } from "./types.ts";
 
 export function isRecipe(node: Node): node is Node<RecipePayload> {
-  return node.osk.node_type === "Recipe";
+  return node.corpus.node_type === "Recipe";
 }
 
 export const recipeModule: NodeTypeModule = {
@@ -13,7 +13,7 @@ export const recipeModule: NodeTypeModule = {
   description: "A verified fix with code, steps, and caveats.",
   template(publicKey) {
     return {
-      osk: {
+      corpus: {
         version: "0.3.0",
         node_type: "Recipe",
         node_id: uuidv7(),

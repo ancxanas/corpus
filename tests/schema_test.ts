@@ -17,7 +17,7 @@ function baseNode(
   overrides: Partial<Node<ProblemPayload>> = {},
 ): Node<ProblemPayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Problem",
       node_id: "0190c0a0-0000-7000-8000-000000000001",
@@ -60,7 +60,7 @@ function verificationNode(
   overrides: Partial<VerificationPayload> = {},
 ): Node<VerificationPayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Verification",
       node_id: "0190c0a0-0000-7000-8000-000000000002",
@@ -107,7 +107,7 @@ function recipeNode(
   overrides: Partial<RecipePayload> = {},
 ): Node<RecipePayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Recipe",
       node_id: "0190c0a0-0000-7000-8000-000000000003",
@@ -139,7 +139,7 @@ function guideNode(
   overrides: Partial<GuidePayload> = {},
 ): Node<GuidePayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Guide",
       node_id: "0190c0a0-0000-7000-8000-000000000004",
@@ -197,7 +197,7 @@ Deno.test("valid Problem passes validation", async () => {
 });
 
 Deno.test("empty payload fails validation", async () => {
-  const issues = await validateNode({ osk: baseNode().osk, payload: {} });
+  const issues = await validateNode({ corpus: baseNode().corpus, payload: {} });
   assertEquals(issues.length > 0, true);
 });
 
@@ -222,16 +222,16 @@ Deno.test("invalid severity enum fails", async () => {
   assertEquals(issues.some((i) => i.pointer.includes("severity")), true);
 });
 
-Deno.test("wrong osk.version fails", async () => {
+Deno.test("wrong corpus.version fails", async () => {
   const node = baseNode();
-  node.osk = { ...node.osk, version: "0.2.0" } as unknown as Node["osk"];
+  node.corpus = { ...node.corpus, version: "0.2.0" } as unknown as Node["corpus"];
   const issues = await validateNode(node);
   assertEquals(issues.length > 0, true);
 });
 
 Deno.test("node_type mismatch with payload fails", async () => {
   const node = baseNode();
-  node.osk.node_type = "Recipe" as never;
+  node.corpus.node_type = "Recipe" as never;
   const issues = await validateNode(node);
   assertEquals(issues.length > 0, true);
 });
@@ -479,7 +479,7 @@ function referenceNode(
   overrides: Partial<ReferencePayload> = {},
 ): Node<ReferencePayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Reference",
       node_id: "0190c0a0-0000-7000-8000-000000000005",
@@ -526,7 +526,7 @@ function comparisonNode(
   overrides: Partial<ComparisonPayload> = {},
 ): Node<ComparisonPayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Comparison",
       node_id: "0190c0a0-0000-7000-8000-000000000006",
@@ -572,7 +572,7 @@ function improvementNode(
   overrides: Partial<ImprovementPayload> = {},
 ): Node<ImprovementPayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Improvement",
       node_id: "0190c0a0-0000-7000-8000-000000000007",
@@ -624,7 +624,7 @@ function blueprintNode(
   overrides: Partial<BlueprintPayload> = {},
 ): Node<BlueprintPayload> {
   return {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Blueprint",
       node_id: "0190c0a0-0000-7000-8000-000000000008",
@@ -742,7 +742,7 @@ Deno.test("active comparison with numeric value lacking receipt fails", async ()
 
 Deno.test("draft comparison with numeric value lacking receipt fails schema", async () => {
   const node = comparisonNode();
-  node.osk.knowledge_lifecycle.status = "draft";
+  node.corpus.knowledge_lifecycle.status = "draft";
   delete node.payload.comparison.dimensions[0]!.options[0]!.benchmark_receipt;
   const issues = await validateNode(node);
   assertEquals(

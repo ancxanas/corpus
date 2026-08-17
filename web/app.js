@@ -151,7 +151,7 @@ function confidenceClass(value) {
 }
 
 function typeOf(resource) {
-  return resource?.attributes?.osk?.node_type ?? resource?.type ?? "node";
+  return resource?.attributes?.corpus?.node_type ?? resource?.type ?? "node";
 }
 
 function typeId(resource) {
@@ -805,9 +805,9 @@ function renderSolvedProblemsPanel(problems) {
 
 function metadataPanel(resource, lifecycle, attribution, versions, currentCid) {
   const meta = resource.meta ?? {};
-  const osk = resource.attributes?.osk ?? {};
+  const corpus = resource.attributes?.corpus ?? {};
   const confidence = meta.confidence_score;
-  const sup = osk.supersedes_cid?.["/"];
+  const sup = corpus.supersedes_cid?.["/"];
 
   const versionLinks = versions.length
     ? `<div class="versions">${
@@ -1040,9 +1040,9 @@ async function renderDetail(cid) {
     );
     if (token !== renderToken) return;
     const resource = body.data;
-    const osk = resource.attributes?.osk ?? {};
-    const lifecycle = osk.knowledge_lifecycle ?? {};
-    const attribution = osk.attribution ?? {};
+    const corpus = resource.attributes?.corpus ?? {};
+    const lifecycle = corpus.knowledge_lifecycle ?? {};
+    const attribution = corpus.attribution ?? {};
     const payload = resource.attributes?.payload ?? {};
     const meta = resource.meta ?? {};
     const t = typeId(resource);
@@ -1055,7 +1055,7 @@ async function renderDetail(cid) {
 
     const [receipts, versions, solvedProblems] = await Promise.all([
       payload.recipe ? fetchReceipts(resource.id) : Promise.resolve([]),
-      fetchVersions(osk.node_id),
+      fetchVersions(corpus.node_id),
       payload.recipe ? fetchSolvedProblems(resource.id) : Promise.resolve([]),
     ]);
     if (token !== renderToken) return;

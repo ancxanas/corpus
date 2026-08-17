@@ -12,7 +12,7 @@ export function computeEffectiveStatus(
   node: Node,
   ctx: StatusContext,
 ): EffectiveStatus {
-  const declared = node.osk.knowledge_lifecycle.status;
+  const declared = node.corpus.knowledge_lifecycle.status;
   if (declared === "deprecated") {
     return "deprecated";
   }
@@ -26,7 +26,7 @@ export function computeEffectiveStatus(
   if (ctx.triggerFired) {
     return "stale";
   }
-  return registry[node.osk.node_type].lifecycle(declared, receipt !== null);
+  return registry[node.corpus.node_type].lifecycle(declared, receipt !== null);
 }
 
 function latestReceipt(receipts: IndexedVerification[]): IndexedVerification {

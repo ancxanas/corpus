@@ -94,7 +94,7 @@
       },
       "additionalProperties": false
     },
-    "osk": {
+    "corpus": {
       "type": "object",
       "required": [
         "version",

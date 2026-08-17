@@ -33,7 +33,7 @@ interface Resource {
     version?: number;
   };
   attributes?: {
-    osk?: { attribution?: { public_key?: string } };
+    corpus?: { attribution?: { public_key?: string } };
     payload?: { problem?: ProblemPayload; recipe?: RecipePayload };
   };
 }
@@ -197,7 +197,7 @@ async function verifySolution(winner: RankedSolution): Promise<void> {
   const author = await (await api(`/nodes/${winner.cid}`)).json() as {
     data?: Resource;
   };
-  const authorKey = author.data?.attributes?.osk?.attribution?.public_key;
+  const authorKey = author.data?.attributes?.corpus?.attribution?.public_key;
   if (authorKey === keys.public_key) {
     warn(
       `skipping verify: ${KEY_FILE} authored the winning recipe (a verifier must not verify its own solution)`,
@@ -230,7 +230,7 @@ async function verifySolution(winner: RankedSolution): Promise<void> {
   }
 
   const node: Node = {
-    osk: {
+    corpus: {
       version: "0.3.0",
       node_type: "Verification",
       node_id: uuidv7(),
