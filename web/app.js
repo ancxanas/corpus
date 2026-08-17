@@ -1532,7 +1532,7 @@ function renderReference(reference) {
   }
       ${
     source.snapshot_cid
-      ? `<dt>Snapshot</dt><dd>${cidLinkOrText(source.snapshot_cid["/"])}</dd>`
+      ? `<dt>Snapshot</dt><dd>${receiptCidText(source.snapshot_cid["/"])}</dd>`
       : ""
   }
       <dt>Consistency</dt><dd>${esc(consistency.result ?? "—")}</dd>
