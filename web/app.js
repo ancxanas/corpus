@@ -201,7 +201,8 @@ function snippetOf(resource) {
 function tagsOf(resource) {
   const payload = resource?.attributes?.payload ?? {};
   return payload.problem?.tags ?? payload.recipe?.tags ?? payload.guide?.tags ??
-    [];
+    payload.comparison?.tags ?? payload.reference?.tags ??
+    payload.improvement?.tags ?? payload.blueprint?.tags ?? [];
 }
 
 function nodeLink(cid, label) {
@@ -1507,6 +1508,15 @@ function renderComparison(comparison) {
         <div class="recommendation-reason">${esc(r.reason)}</div>
       </div>`).join("")
   }
+    ${
+    comparison.tags?.length
+      ? `<h2>Tags</h2><div class="row-tags">${
+        comparison.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join(
+          "",
+        )
+      }</div>`
+      : ""
+  }
   `;
 }
 
@@ -1560,6 +1570,12 @@ function renderReference(reference) {
           version ${esc(e.version ?? "—")} · ${esc(e.source_pointer ?? "")}
         </div>
       </div>`).join("")
+  }${
+    reference.tags?.length
+      ? `<h2>Tags</h2><div class="row-tags">${
+        reference.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")
+      }</div>`
+      : ""
   }`;
 }
 
@@ -1661,6 +1677,14 @@ function renderImprovement(improvement, includedById) {
           : ""
       }</dl>`
       : ""
+  }${
+    improvement.tags?.length
+      ? `<h2>Tags</h2><div class="row-tags">${
+        improvement.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join(
+          "",
+        )
+      }</div>`
+      : ""
   }`;
 }
 
@@ -1746,6 +1770,12 @@ function renderBlueprint(blueprint, includedById) {
           }</li>`
         ).join("")
       }</ul>`
+      : ""
+  }${
+    blueprint.tags?.length
+      ? `<h2>Tags</h2><div class="row-tags">${
+        blueprint.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")
+      }</div>`
       : ""
   }`;
 }

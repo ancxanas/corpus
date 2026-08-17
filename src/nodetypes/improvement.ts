@@ -85,7 +85,7 @@ export const improvementModule: NodeTypeModule = {
       framework_name: null,
       language: null,
       runtime_name: null,
-      tags: [],
+      tags: node.payload.improvement.tags ?? [],
     };
   },
   lifecycle(declared) {

@@ -69,7 +69,7 @@ export const comparisonModule: NodeTypeModule = {
       framework_name: null,
       language: null,
       runtime_name: null,
-      tags: [],
+      tags: node.payload.comparison.tags ?? [],
     };
   },
   lifecycle(declared) {

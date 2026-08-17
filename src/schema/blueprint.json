@@ -149,7 +149,12 @@
                 "abandoned"
               ]
             },
-            "confidence": { "enum": ["high", "medium", "low"] }
+            "confidence": { "enum": ["high", "medium", "low"]             },
+            "tags": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "maxItems": 20
+            }
           },
           "additionalProperties": false
         }

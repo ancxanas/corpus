@@ -47,6 +47,7 @@ export function serializeResource(
     meta: {
       cid: indexed.cid,
       title: registry[indexed.node_type].title(indexed.node),
+      tags: registry[indexed.node_type].meta(indexed.node).tags,
       effective_status: indexed.effective_status,
       confidence_score: indexed.confidence_score,
       created_at: indexed.created_at,

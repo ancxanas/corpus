@@ -86,7 +86,7 @@ export const blueprintModule: NodeTypeModule = {
       framework_name: null,
       language: null,
       runtime_name: null,
-      tags: [],
+      tags: node.payload.blueprint.tags ?? [],
     };
   },
   lifecycle(declared) {

@@ -223,6 +223,7 @@ export interface ReferencePayload {
       last_checked: string;
       result: "confirmed" | "drifted";
     };
+    tags?: string[];
   };
 }
 
@@ -243,6 +244,7 @@ export interface ComparisonPayload {
       choice: string;
       reason: string;
     }>;
+    tags?: string[];
   };
 }
 
@@ -280,6 +282,7 @@ export interface ImprovementPayload {
       verification_plan?: string;
       benchmark_receipts?: IpldLink[];
     };
+    tags?: string[];
   };
 }
 
@@ -328,6 +331,7 @@ export interface BlueprintPayload {
       | "realized"
       | "abandoned";
     confidence: "high" | "medium" | "low";
+    tags?: string[];
   };
 }
 

@@ -2603,6 +2603,7 @@ const comparisonJson = comparisonNode(ID(41), author.publicKeyHex, {
     reason:
       "Pagination bounds each payload to a page, but memory still tracks the materialized result set and offset paging can skip rows when the data changes.",
   }],
+  tags: ["streaming", "pagination", "memory", "json"],
 });
 await ingest("comparisons", comparisonJson);
 
@@ -2649,6 +2650,7 @@ const referenceJson = referenceNode(ID(42), author.publicKeyHex, {
     last_checked: "2026-08-05T00:00:00Z",
     result: "confirmed",
   },
+  tags: ["deno", "streaming", "web-api"],
 });
 await ingest("references", referenceJson);
 
@@ -2707,6 +2709,7 @@ const improvementJson = improvementNode(
         "Re-run the large-response suite and inspect the per-page payload size.",
       benchmark_receipts: [{ "/": vJsonBCid }],
     },
+    tags: ["pagination", "ingest", "performance"],
   },
 );
 await ingest("improvements", improvementJson);
@@ -2816,6 +2819,7 @@ const blueprintJson = blueprintNode(
     ],
     epistemic_status: "feasible",
     confidence: "medium",
+    tags: ["architecture", "streaming", "pagination", "ingestion"],
   },
 );
 await ingest("blueprints", blueprintJson);

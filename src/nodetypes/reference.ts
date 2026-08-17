@@ -68,7 +68,7 @@ export const referenceModule: NodeTypeModule = {
       framework_name: node.payload.reference.topic,
       language: null,
       runtime_name: null,
-      tags: [],
+      tags: node.payload.reference.tags ?? [],
     };
   },
   lifecycle(declared) {
