@@ -223,6 +223,11 @@ function receiptCidText(cid) {
   }" title="Copy receipt CID">${icon("copy")}</button></span>`;
 }
 
+function titleForIncluded(includedById, cid) {
+  const r = includedById.get(cid);
+  return r ? titleOf(r) : shortCid(cid);
+}
+
 /* ---------- icons ---------- */
 
 const ICONS = {
@@ -1026,9 +1031,9 @@ async function renderDetail(cid) {
       : payload.comparison
       ? renderComparison(payload.comparison)
       : payload.improvement
-      ? renderImprovement(payload.improvement)
+      ? renderImprovement(payload.improvement, includedById)
       : payload.blueprint
-      ? renderBlueprint(payload.blueprint)
+      ? renderBlueprint(payload.blueprint, includedById)
       : `<p style="color:var(--text-muted)">No readable body.</p>`;
 
     const articleMeta = `
@@ -1517,7 +1522,7 @@ function renderReference(reference) {
   }`;
 }
 
-function renderImprovement(improvement) {
+function renderImprovement(improvement, includedById) {
   const current = improvement.current_state ?? {};
   const target = improvement.target_state ?? {};
   const impl = improvement.implementation ?? {};
@@ -1566,7 +1571,10 @@ function renderImprovement(improvement) {
             ? `<ul style="margin-top:4px">${
               p.recipe_links.map((rl) =>
                 `<li class="rel-applies">${esc(rl.relation ?? "")} ${
-                  nodeLink(rl.node["/"])
+                  nodeLink(
+                    rl.node["/"],
+                    titleForIncluded(includedById, rl.node["/"]),
+                  )
                 }</li>`
               ).join("")
             }</ul>`
@@ -1615,7 +1623,7 @@ function renderImprovement(improvement) {
   }`;
 }
 
-function renderBlueprint(blueprint) {
+function renderBlueprint(blueprint, includedById) {
   const landscape = blueprint.current_landscape ?? {};
   const arch = blueprint.proposed_architecture ?? {};
   const feasibility = blueprint.feasibility ?? {};
@@ -1693,7 +1701,7 @@ function renderBlueprint(blueprint) {
       ? `<h2>Related nodes</h2><ul>${
         blueprint.related_nodes.map((rn) =>
           `<li class="rel-applies">${esc(rn.relation ?? "")} ${
-            nodeLink(rn.node["/"])
+            nodeLink(rn.node["/"], titleForIncluded(includedById, rn.node["/"]))
           }</li>`
         ).join("")
       }</ul>`
